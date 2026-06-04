@@ -82,8 +82,8 @@ class OsmQuick3DPlugin:
         canvas = self.iface.mapCanvas()
         if area_source == "selection":
             layer = self.iface.activeLayer()
-            if (layer is None or not hasattr(layer, "selectedFeatureCount")
-                    or layer.selectedFeatureCount() == 0):
+            count = getattr(layer, "selectedFeatureCount", None)
+            if count is None or count() == 0:
                 raise ValueError(
                     "No features selected. Select features in the active vector "
                     "layer, or use 'Visible map extent'."

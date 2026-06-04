@@ -3,6 +3,10 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.7.1] - 2026-06-04
+
+- Security/quality fixes to clear the QGIS Plugin Hub scan that blocked 0.7.0: the Overpass cache filename now uses SHA-256 instead of SHA-1 (it was only ever a filename digest, never security), and two Flake8 nits (an unused import and a binary-operator line break) are resolved. No functional change.
+
 ## [0.7.0] - 2026-06-04
 
 - **Selectable study-area shape**: rectangle (map extent), rounded rectangle, circle or hexagon. OSM features are clipped to the chosen shape, so it is what gets exported. Circle and hexagon are inscribed in the shorter side of the extent.

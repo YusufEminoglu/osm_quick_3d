@@ -3,7 +3,7 @@ name=OSM Quick 3D
 qgisMinimumVersion=3.28
 qgisMaximumVersion=3.99
 description=One-click OpenStreetMap into native QGIS: function-styled layers plus flat-roof 3D building massing on a selectable study-area shape (rectangle, rounded rectangle, circle or hexagon) over a recessed ground base, built for larger areas.
-version=0.7.0
+version=0.7.1
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -23,6 +23,8 @@ hasProcessingProvider=no
 license=MIT
 
 changelog=
+    OSM Quick 3D 0.7.1
+        - Security/quality fixes to clear the QGIS Plugin Hub scan that blocked 0.7.0: the Overpass cache filename uses SHA-256 instead of SHA-1 (only ever a filename digest, never security), plus two Flake8 nits. No functional change.
     OSM Quick 3D 0.7.0
         - Selectable study-area shape: rectangle, rounded rectangle, circle or hexagon; OSM features are clipped to the chosen shape (circle/hexagon inscribed in the shorter side).
         - Optional ground base: the study area buffered outward by 5 m, extruded in 3D as a recessed plinth from -5 m up to ground level, under the city.

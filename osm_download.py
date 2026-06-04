@@ -40,7 +40,7 @@ OVERPASS_ENDPOINTS = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
-USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.7.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
+USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.7.1 (https://github.com/YusufEminoglu/osm_quick_3d)"
 DEFAULT_TIMEOUT_S = 60
 
 # Disk cache for Overpass responses. The public API is frequently rate-limited
@@ -63,7 +63,8 @@ def _cache_dir() -> str:
 
 
 def _cache_path(query: str) -> str:
-    digest = hashlib.sha1(query.encode("utf-8")).hexdigest()
+    # SHA-256 purely as a filename-safe digest of the query (not security).
+    digest = hashlib.sha256(query.encode("utf-8")).hexdigest()[:40]
     return os.path.join(_cache_dir(), f"{digest}.json")
 
 
