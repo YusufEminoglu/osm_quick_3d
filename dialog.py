@@ -125,6 +125,13 @@ class PluginDialog(QDialog):
         self.basemap.setCurrentIndex(0)
         form.addRow("Altlık (basemap):", self.basemap)
 
+        self.cb_save_gpkg = QCheckBox("Sonucu GeoPackage'a kaydet (kalıcı katmanlar)")
+        self.cb_save_gpkg.setToolTip(
+            "İşaretliyse indirilen katmanlar tek bir .gpkg dosyasına yazılır ve oradan "
+            "yüklenir; böylece proje kapanınca kaybolmaz. Çalıştırınca dosya konumu sorulur."
+        )
+        form.addRow("", self.cb_save_gpkg)
+
         self.cb_open3d = QCheckBox("Bitince 3D Harita Görünümü'nü aç")
         form.addRow("", self.cb_open3d)
         return w
@@ -158,6 +165,7 @@ class PluginDialog(QDialog):
             "want_furniture": self.cb_furniture.isChecked(),
             "basemap": self.basemap.currentLayer(),
             "open_3d": self.cb_open3d.isChecked(),
+            "save_gpkg": self.cb_save_gpkg.isChecked(),
         }
         self._save(p)
         self.runRequested.emit(p)
@@ -179,6 +187,7 @@ class PluginDialog(QDialog):
         self.cb_trees.setChecked(_truthy(s.value(f"{_S}/trees"), False))
         self.cb_furniture.setChecked(_truthy(s.value(f"{_S}/furniture"), False))
         self.cb_open3d.setChecked(_truthy(s.value(f"{_S}/open3d"), True))
+        self.cb_save_gpkg.setChecked(_truthy(s.value(f"{_S}/save_gpkg"), False))
         try:
             self.height_scale.setValue(float(s.value(f"{_S}/height_scale", 1.0)))
         except (TypeError, ValueError):
@@ -199,6 +208,7 @@ class PluginDialog(QDialog):
         s.setValue(f"{_S}/furniture", p["want_furniture"])
         s.setValue(f"{_S}/open3d", p["open_3d"])
         s.setValue(f"{_S}/height_scale", p["height_scale"])
+        s.setValue(f"{_S}/save_gpkg", p["save_gpkg"])
 
     def set_status(self, text, *, error=False):
         self.status.setStyleSheet(f"color:{'#b71c1c' if error else '#1b5e20'};padding:4px;")

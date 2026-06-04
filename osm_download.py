@@ -36,7 +36,7 @@ OVERPASS_ENDPOINTS = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
-USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.2.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
+USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.3.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
 DEFAULT_TIMEOUT_S = 60
 
 
@@ -247,6 +247,38 @@ def save_layer_to_geojson(layer: QgsVectorLayer, path) -> None:
     QgsVectorFileWriter.writeAsVectorFormatV3(
         layer, str(path), QgsProject.instance().transformContext(), options
     )
+
+
+def write_layer_to_gpkg(layer: QgsVectorLayer, gpkg_path: str, layer_name: str,
+                        first: bool) -> str | None:
+    """Write one (styled) memory layer into a GeoPackage as ``layer_name``.
+
+    ``first`` overwrites/creates the file; later layers add a new table to it.
+    Returns ``None`` on success or a short error string. Used to make the
+    otherwise-ephemeral memory layers durable so they survive project reload.
+    """
+    options = QgsVectorFileWriter.SaveVectorOptions()
+    options.driverName = "GPKG"
+    options.layerName = layer_name
+    options.fileEncoding = "UTF-8"
+    options.actionOnExistingFile = (
+        QgsVectorFileWriter.CreateOrOverwriteFile if first
+        else QgsVectorFileWriter.CreateOrOverwriteLayer
+    )
+    try:
+        result = QgsVectorFileWriter.writeAsVectorFormatV3(
+            layer, str(gpkg_path), QgsProject.instance().transformContext(), options
+        )
+    except Exception as exc:  # pragma: no cover - depends on GDAL build
+        return str(exc)
+    # writeAsVectorFormatV3 returns (errorCode, errorMessage); NoError == 0.
+    try:
+        code, message = result[0], result[1]
+    except (TypeError, IndexError):
+        return None
+    if code != QgsVectorFileWriter.NoError:
+        return message or f"write error {code}"
+    return None
 
 
 # --------------------------------------------------------------------------

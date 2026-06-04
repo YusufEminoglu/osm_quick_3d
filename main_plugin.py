@@ -13,17 +13,23 @@ import os
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction, QApplication, QMessageBox
+from qgis.PyQt.QtWidgets import QAction, QApplication, QFileDialog, QMessageBox
 from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
     QgsGeometry,
     QgsProject,
     QgsRectangle,
+    QgsVectorLayer,
 )
 
 from . import native3d, styling
-from .osm_download import OsmDownloadError, download_osm_for_area, utm_epsg_for
+from .osm_download import (
+    OsmDownloadError,
+    download_osm_for_area,
+    utm_epsg_for,
+    write_layer_to_gpkg,
+)
 
 
 class OsmQuick3DPlugin:
@@ -122,6 +128,34 @@ class OsmQuick3DPlugin:
             ("buildings", p["want_buildings"], styling.style_buildings),
         ]
 
+    def _ask_gpkg_path(self):
+        """Prompt for a GeoPackage save path; return it or None if cancelled."""
+        path, _ = QFileDialog.getSaveFileName(
+            self.iface.mainWindow(),
+            "OSM Quick 3D — GeoPackage olarak kaydet",
+            "osm_quick_3d.gpkg",
+            "GeoPackage (*.gpkg)",
+        )
+        if not path:
+            return None
+        if not path.lower().endswith(".gpkg"):
+            path += ".gpkg"
+        return path
+
+    def _persist_to_gpkg(self, layer, key, gpkg_path, first):
+        """Write ``layer`` into the GeoPackage and return the reloaded OGR layer.
+
+        Returns (loaded_layer, error_str). On any failure the caller keeps the
+        original in-memory layer so the run still succeeds, just not persisted.
+        """
+        err = write_layer_to_gpkg(layer, gpkg_path, key, first)
+        if err:
+            return None, err
+        loaded = QgsVectorLayer(f"{gpkg_path}|layername={key}", layer.name(), "ogr")
+        if not loaded.isValid():
+            return None, "reload failed"
+        return loaded, None
+
     def _make_group(self, epsg):
         """A fresh layer-tree group at the top, to keep the legend tidy on big areas."""
         try:
@@ -174,15 +208,31 @@ class OsmQuick3DPlugin:
         finally:
             QApplication.restoreOverrideCursor()
 
+        gpkg_path = None
+        if p.get("save_gpkg"):
+            gpkg_path = self._ask_gpkg_path()
+            if gpkg_path is None:
+                self._set_status("GeoPackage kaydı iptal edildi; bellek katmanları kullanılıyor.")
+
         project = QgsProject.instance()
         group = self._make_group(epsg)
         added, total, buildings_layer = [], 0, None
+        gpkg_first, gpkg_failed = True, False
         for key, wanted, style_fn in self._layer_specs(p):
             if not wanted:
                 continue
             layer = result.get(key)
             if layer is None or layer.featureCount() == 0:
                 continue
+            # Persist to GeoPackage first (write the raw memory layer, then reload
+            # and style the durable copy), so closing the project doesn't lose it.
+            if gpkg_path is not None:
+                loaded, err = self._persist_to_gpkg(layer, key, gpkg_path, gpkg_first)
+                if loaded is not None:
+                    layer = loaded
+                    gpkg_first = False
+                else:
+                    gpkg_failed = True
             try:
                 style_fn(layer)
             except Exception:
@@ -234,8 +284,16 @@ class OsmQuick3DPlugin:
         opened_3d = native3d.open_3d_view(self.iface) if p["open_3d"] else False
 
         summary = f"{total} obje eklendi: " + ", ".join(added) + f" (EPSG:{epsg})."
+        if gpkg_path is not None and not gpkg_failed:
+            summary += f" GeoPackage: {gpkg_path}"
         self.iface.messageBar().pushSuccess("OSM Quick 3D", summary)
         self._set_status(summary)
+        if gpkg_path is not None and gpkg_failed:
+            self.iface.messageBar().pushWarning(
+                "OSM Quick 3D",
+                "Bazı katmanlar GeoPackage'a yazılamadı; o katmanlar bellek katmanı olarak "
+                "eklendi (proje kapanınca kaybolur).",
+            )
         if p["extrude_3d"] and not extruded:
             self.iface.messageBar().pushInfo(
                 "OSM Quick 3D",
