@@ -57,6 +57,7 @@ sys.path.insert(0, PLUGIN_DIR)
 
 import osm_download as osm  # noqa: E402
 import styling  # noqa: E402
+import native3d  # noqa: E402  (module-level has no qgis imports — safe to import)
 
 
 # ── tiny assert harness ──────────────────────────────────────────────────────
@@ -155,6 +156,18 @@ def test_cache_roundtrip():
         pass
 
 
+def test_extrusion_expression():
+    print("native3d._extrusion_expression")
+    check("scale 1.0 is the bare expression",
+          native3d._extrusion_expression(1.0) == native3d.EXTRUSION_EXPRESSION)
+    check("default arg is 1.0", native3d._extrusion_expression() == native3d.EXTRUSION_EXPRESSION)
+    check("scale 2.0 multiplies", native3d._extrusion_expression(2.0)
+          == f"({native3d.EXTRUSION_EXPRESSION}) * 2")
+    check("bad scale falls back to bare", native3d._extrusion_expression("x")
+          == native3d.EXTRUSION_EXPRESSION)
+    check("uses OSM height/levels coalesce", "building_levels" in native3d.EXTRUSION_EXPRESSION)
+
+
 def test_clear_cache():
     print("clear_cache")
     osm._write_cache("clear-test-a", {"x": 1})
@@ -177,8 +190,9 @@ def test_shape_and_base_constants():
 def main():
     for test in (test_parse_osm_number, test_building_levels, test_utm_epsg,
                  test_waterway_width, test_building_color_expression,
-                 test_building_color_modes, test_cache_roundtrip,
-                 test_clear_cache, test_shape_and_base_constants):
+                 test_building_color_modes, test_extrusion_expression,
+                 test_cache_roundtrip, test_clear_cache,
+                 test_shape_and_base_constants):
         test()
     print()
     if _failures:
