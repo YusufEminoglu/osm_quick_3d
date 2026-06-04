@@ -3,6 +3,10 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.4.0] - 2026-06-04
+
+- Overpass responses are now cached on disk for a week, keyed by the exact query. Re-running on the same area (or just toggling a layer) opens instantly without hitting the rate-limited public API again. A new "use cache when possible" toggle (on by default) controls it.
+
 ## [0.3.0] - 2026-06-04
 
 - Optional "Save to GeoPackage" — when enabled, every downloaded layer is written into one `.gpkg` and reloaded from it, so the result survives a project reload instead of vanishing as a memory layer. If a write fails, that layer falls back to a memory layer and a warning is shown.

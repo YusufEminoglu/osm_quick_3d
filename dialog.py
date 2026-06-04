@@ -125,6 +125,13 @@ class PluginDialog(QDialog):
         self.basemap.setCurrentIndex(0)
         form.addRow("Altlık (basemap):", self.basemap)
 
+        self.cb_use_cache = QCheckBox("Mümkünse önbellekten kullan (Overpass'ı yorma)")
+        self.cb_use_cache.setToolTip(
+            "Aynı alanı tekrar indirirken bir haftalık disk önbelleği kullanılır; "
+            "böylece Overpass hız sınırına (HTTP 429) takılmadan anında açılır."
+        )
+        form.addRow("", self.cb_use_cache)
+
         self.cb_save_gpkg = QCheckBox("Sonucu GeoPackage'a kaydet (kalıcı katmanlar)")
         self.cb_save_gpkg.setToolTip(
             "İşaretliyse indirilen katmanlar tek bir .gpkg dosyasına yazılır ve oradan "
@@ -166,6 +173,7 @@ class PluginDialog(QDialog):
             "basemap": self.basemap.currentLayer(),
             "open_3d": self.cb_open3d.isChecked(),
             "save_gpkg": self.cb_save_gpkg.isChecked(),
+            "use_cache": self.cb_use_cache.isChecked(),
         }
         self._save(p)
         self.runRequested.emit(p)
@@ -188,6 +196,7 @@ class PluginDialog(QDialog):
         self.cb_furniture.setChecked(_truthy(s.value(f"{_S}/furniture"), False))
         self.cb_open3d.setChecked(_truthy(s.value(f"{_S}/open3d"), True))
         self.cb_save_gpkg.setChecked(_truthy(s.value(f"{_S}/save_gpkg"), False))
+        self.cb_use_cache.setChecked(_truthy(s.value(f"{_S}/use_cache"), True))
         try:
             self.height_scale.setValue(float(s.value(f"{_S}/height_scale", 1.0)))
         except (TypeError, ValueError):
@@ -209,6 +218,7 @@ class PluginDialog(QDialog):
         s.setValue(f"{_S}/open3d", p["open_3d"])
         s.setValue(f"{_S}/height_scale", p["height_scale"])
         s.setValue(f"{_S}/save_gpkg", p["save_gpkg"])
+        s.setValue(f"{_S}/use_cache", p["use_cache"])
 
     def set_status(self, text, *, error=False):
         self.status.setStyleSheet(f"color:{'#b71c1c' if error else '#1b5e20'};padding:4px;")

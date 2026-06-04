@@ -8,8 +8,12 @@ data, matching the viewer's expectation.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import os
+import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -36,12 +40,53 @@ OVERPASS_ENDPOINTS = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
-USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.3.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
+USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.4.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
 DEFAULT_TIMEOUT_S = 60
+
+# Disk cache for Overpass responses. The public API is frequently rate-limited
+# (HTTP 429); caching the exact-query JSON means re-running on the same area (or
+# nudging a layer toggle) doesn't hit the network again within the TTL.
+CACHE_TTL_S = 7 * 24 * 3600  # one week
 
 
 class OsmDownloadError(RuntimeError):
     pass
+
+
+def _cache_dir() -> str:
+    path = os.path.join(tempfile.gettempdir(), "osm_quick_3d_cache")
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        pass
+    return path
+
+
+def _cache_path(query: str) -> str:
+    digest = hashlib.sha1(query.encode("utf-8")).hexdigest()
+    return os.path.join(_cache_dir(), f"{digest}.json")
+
+
+def _read_cache(query: str):
+    """Return cached JSON for this exact query if present and fresh, else None."""
+    path = _cache_path(query)
+    try:
+        if not os.path.isfile(path):
+            return None
+        if time.time() - os.path.getmtime(path) > CACHE_TTL_S:
+            return None
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return None
+
+
+def _write_cache(query: str, payload: dict) -> None:
+    try:
+        with open(_cache_path(query), "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+    except (OSError, TypeError, ValueError):
+        pass
 
 
 # --------------------------------------------------------------------------
@@ -105,9 +150,21 @@ def _fetch_one(endpoint: str, query: str, timeout_s: int) -> dict:
 
 
 def fetch_overpass(min_lat: float, min_lon: float, max_lat: float, max_lon: float,
-                   timeout_s: int = DEFAULT_TIMEOUT_S, feedback=None) -> dict:
-    """Query Overpass, falling back across mirrors until one answers with JSON."""
+                   timeout_s: int = DEFAULT_TIMEOUT_S, feedback=None,
+                   use_cache: bool = True) -> dict:
+    """Query Overpass, falling back across mirrors until one answers with JSON.
+
+    When ``use_cache`` is set, a fresh on-disk response for the exact same query
+    is returned without touching the network, and successful network responses
+    are written back to the cache.
+    """
     query = _overpass_query(min_lat, min_lon, max_lat, max_lon)
+    if use_cache:
+        cached = _read_cache(query)
+        if cached is not None:
+            if feedback:
+                feedback("Using cached OSM (no download) ...")
+            return cached
     last_error = None
     for index, endpoint in enumerate(OVERPASS_ENDPOINTS):
         host = urllib.parse.urlparse(endpoint).netloc or endpoint
@@ -115,7 +172,10 @@ def fetch_overpass(min_lat: float, min_lon: float, max_lat: float, max_lon: floa
             prefix = "Querying" if index == 0 else f"Mirror {index} —"
             feedback(f"{prefix} {host} ...")
         try:
-            return _fetch_one(endpoint, query, timeout_s)
+            payload = _fetch_one(endpoint, query, timeout_s)
+            if use_cache:
+                _write_cache(query, payload)
+            return payload
         except OsmDownloadError as exc:
             last_error = exc
             if feedback and index + 1 < len(OVERPASS_ENDPOINTS):
@@ -284,7 +344,8 @@ def write_layer_to_gpkg(layer: QgsVectorLayer, gpkg_path: str, layer_name: str,
 # --------------------------------------------------------------------------
 # Main download + clip
 # --------------------------------------------------------------------------
-def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None) -> dict:
+def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
+                          use_cache: bool = True) -> dict:
     """Fetch OSM for the boundary's bbox, reproject to UTM, clip to the boundary.
 
     ``area_utm`` is the study-boundary polygon (circle, rounded rectangle,
@@ -301,7 +362,8 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None) 
     min_lon, min_lat = wgs_rect.xMinimum(), wgs_rect.yMinimum()
     max_lon, max_lat = wgs_rect.xMaximum(), wgs_rect.yMaximum()
 
-    payload = fetch_overpass(min_lat, min_lon, max_lat, max_lon, feedback=feedback)
+    payload = fetch_overpass(min_lat, min_lon, max_lat, max_lon, feedback=feedback,
+                             use_cache=use_cache)
     elements = payload.get("elements") or []
     if not elements:
         raise OsmDownloadError("Overpass returned 0 elements for this area. Try a different or larger area.")

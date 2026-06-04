@@ -196,7 +196,10 @@ class OsmQuick3DPlugin:
         self._set_status(f"İndiriliyor… (~{area_km2:.1f} km², EPSG:{epsg})")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            result = download_osm_for_area(area_utm, epsg, feedback=self._set_status)
+            result = download_osm_for_area(
+                area_utm, epsg, feedback=self._set_status,
+                use_cache=p.get("use_cache", True),
+            )
         except OsmDownloadError as exc:
             self._error("OSM indirme hatası", str(exc))
             self._set_status(str(exc), error=True)
