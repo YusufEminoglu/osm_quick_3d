@@ -12,7 +12,7 @@ OSM Quick 3D is the native sibling of [`osm_3d_model`](https://github.com/YusufE
    - buildings by OSM use (residential / commercial / industrial / civic / worship)
    - roads by `highway` class — colour **and** width
    - water blue, greens green
-4. Buildings are **extruded** with native QGIS 3D symbology — a clean **flat-roof massing** model. Height comes from OSM: `coalesce("height", "building_levels" * 3, 9)` m. **Building colours are selectable** (and identical in 2D and 3D): by OSM function, or a soft height-graduated tint — **gray, warm or teal**. A **height-exaggeration** factor (0.5×–5.0×) makes low-rise districts read. No roofs, no animation.
+4. Buildings are **extruded** with native QGIS 3D symbology — a clean **flat-roof massing** model. Height comes from OSM: `coalesce("height", "building_levels" * 3, 9)` m. **Building colours are selectable** (and identical in 2D and 3D): by OSM function, or a soft height-graduated tint — **gray, warm, teal, salmon, purple or sand**. A **height-exaggeration** factor (0.5×–5.0×) makes low-rise districts read. No roofs, no animation.
 5. Trees get a matching **3D pass** — simple green canopies on the ground — when 3D is on.
    - Each building also carries a computed **`footprint_m2`** and an estimated **`gfa_m2`** (footprint × floors) column, and the run reports the area totals — ready for quick planning quantities.
 6. An optional **ground base** — the study area buffered outward by 5 m, extruded as a recessed plinth from −5 m up to ground level — gives the city something to stand on in 3D.

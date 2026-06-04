@@ -98,6 +98,9 @@ _BUILDING_RAMPS = {
     "soft_gray": ("#e8e9e8", "#6e746f"),  # tinted gray
     "soft_warm": ("#ede2d4", "#8a7460"),  # tinted warm
     "teal": ("#dbeae7", "#3c7c77"),       # soft teal
+    "soft_salmon": ("#f1ded7", "#b9776a"),  # soft salmon -> terracotta
+    "soft_purple": ("#e4dded", "#6f5c86"),  # soft lilac -> deep purple
+    "soft_sand": ("#ece6d6", "#9a8a63"),    # soft sand -> slate-sand
 }
 
 # (value, label) for the dialog combo.
@@ -107,6 +110,9 @@ BUILDING_COLOR_MODES = (
     ("soft_gray", "Soft tinted gray"),
     ("soft_warm", "Soft tinted warm"),
     ("teal", "Soft teal"),
+    ("soft_salmon", "Soft salmon"),
+    ("soft_purple", "Soft purple"),
+    ("soft_sand", "Soft sand"),
 )
 
 # Per-feature extrusion/colour height, in metres (tagged height, else floors*3).

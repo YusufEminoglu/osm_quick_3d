@@ -3,6 +3,10 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.8.1] - 2026-06-04
+
+- Three more soft building-colour tints: **Soft salmon**, **Soft purple** and **Soft sand**, alongside the existing gray, warm and teal (and By function / By height).
+
 ## [0.8.0] - 2026-06-04
 
 - **Selectable building colours**, applied identically in 2D and 3D: by OSM function (the categorized use palette), or a soft height-graduated tint — **By height** (cool neutral), **Soft tinted gray**, **Soft tinted warm** or **Soft teal**. The tint modes drive both the 2D fill and the native 3D diffuse from one `color_rgb` ramp by building height, so the massing always matches the map.

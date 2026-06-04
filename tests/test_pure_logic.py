@@ -120,9 +120,12 @@ def test_building_color_expression():
 
 def test_building_color_modes():
     print("building colour modes (height/tints)")
-    check("five modes offered", len(styling.BUILDING_COLOR_MODES) == 5)
+    expected = 1 + len(styling._BUILDING_RAMPS)
+    check("modes = function + ramps", len(styling.BUILDING_COLOR_MODES) == expected)
     check("function is first", styling.BUILDING_COLOR_MODES[0][0] == styling.BUILDING_COLOR_FUNCTION)
-    for mode in ("height", "soft_gray", "soft_warm", "teal"):
+    combo_values = {value for value, _ in styling.BUILDING_COLOR_MODES}
+    for mode in styling._BUILDING_RAMPS:
+        check(f"{mode} is offered in the combo", mode in combo_values)
         expr = styling.building_color_expression(mode)
         check(f"{mode} ramp uses color_rgb", expr.startswith("color_rgb("))
         check(f"{mode} ramp scales by height", "scale_linear(coalesce" in expr)
