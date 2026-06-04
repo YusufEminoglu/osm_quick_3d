@@ -218,6 +218,10 @@ class PluginDialog(QDialog):
         grid.addWidget(self.cb_greens, 1, 1)
         grid.addWidget(self.cb_trees, 2, 0)
         grid.addWidget(self.cb_furniture, 2, 1)
+
+        self.cb_labels = QCheckBox("Show name labels (buildings & roads)")
+        self.cb_labels.setToolTip("Label buildings and roads by their OSM name, with a white halo.")
+        grid.addWidget(self.cb_labels, 3, 0, 1, 2)
         return box
 
     def _group_3d(self):
@@ -340,6 +344,7 @@ class PluginDialog(QDialog):
             "want_greens": self.cb_greens.isChecked(),
             "want_trees": self.cb_trees.isChecked(),
             "want_furniture": self.cb_furniture.isChecked(),
+            "want_labels": self.cb_labels.isChecked(),
             "basemap": self.basemap.currentLayer(),
             "open_3d": self.cb_open3d.isChecked(),
             "save_gpkg": self.cb_save_gpkg.isChecked(),
@@ -371,6 +376,7 @@ class PluginDialog(QDialog):
         self.cb_greens.setChecked(_truthy(s.value(f"{_S}/greens"), True))
         self.cb_trees.setChecked(_truthy(s.value(f"{_S}/trees"), False))
         self.cb_furniture.setChecked(_truthy(s.value(f"{_S}/furniture"), False))
+        self.cb_labels.setChecked(_truthy(s.value(f"{_S}/labels"), False))
         self.cb_open3d.setChecked(_truthy(s.value(f"{_S}/open3d"), True))
         self.cb_save_gpkg.setChecked(_truthy(s.value(f"{_S}/save_gpkg"), False))
         self.cb_use_cache.setChecked(_truthy(s.value(f"{_S}/use_cache"), True))
@@ -396,6 +402,7 @@ class PluginDialog(QDialog):
         s.setValue(f"{_S}/greens", p["want_greens"])
         s.setValue(f"{_S}/trees", p["want_trees"])
         s.setValue(f"{_S}/furniture", p["want_furniture"])
+        s.setValue(f"{_S}/labels", p["want_labels"])
         s.setValue(f"{_S}/open3d", p["open_3d"])
         s.setValue(f"{_S}/height_scale", p["height_scale"])
         s.setValue(f"{_S}/save_gpkg", p["save_gpkg"])

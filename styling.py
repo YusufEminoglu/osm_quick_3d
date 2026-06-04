@@ -269,6 +269,46 @@ def style_trees(layer):
     layer.triggerRepaint()
 
 
+def label_by_name(layer, size=8.0, color_hex="#3a4042", field="name"):
+    """Label a layer by its ``field`` (default OSM ``name``), with a white halo.
+
+    Only non-empty names are drawn. Fully defensive: returns False on builds
+    without the labeling API so the run still succeeds, just unlabelled.
+    """
+    try:
+        from qgis.core import (
+            QgsPalLayerSettings,
+            QgsTextBufferSettings,
+            QgsTextFormat,
+            QgsVectorLayerSimpleLabeling,
+        )
+        from qgis.PyQt.QtGui import QColor
+    except Exception:
+        return False
+    try:
+        settings = QgsPalLayerSettings()
+        # Expression so only features with a real name get a label.
+        settings.fieldName = f"CASE WHEN \"{field}\" IS NOT NULL AND \"{field}\" <> '' THEN \"{field}\" END"
+        settings.isExpression = True
+
+        fmt = QgsTextFormat()
+        fmt.setSize(size)
+        fmt.setColor(QColor(color_hex))
+        buffer = QgsTextBufferSettings()
+        buffer.setEnabled(True)
+        buffer.setSize(0.9)
+        buffer.setColor(QColor("#ffffff"))
+        fmt.setBuffer(buffer)
+        settings.setFormat(fmt)
+
+        layer.setLabeling(QgsVectorLayerSimpleLabeling(settings))
+        layer.setLabelsEnabled(True)
+        layer.triggerRepaint()
+        return True
+    except Exception:
+        return False
+
+
 def style_base(layer, mode=BUILDING_COLOR_FUNCTION):
     """Subtle 2D ground fill, tinted to match the building colour ``mode``."""
     slab = base_color_hex(mode)

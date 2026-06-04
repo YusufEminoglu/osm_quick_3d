@@ -313,6 +313,13 @@ class OsmQuick3DPlugin:
                 project.addMapLayer(layer)
             total += layer.featureCount()
             added.append(f"{layer.featureCount()} {key}")
+            # Optional name labels for the layers that carry a name field.
+            if p.get("want_labels") and key in ("buildings", "roads"):
+                size = 8.0 if key == "buildings" else 7.5
+                try:
+                    styling.label_by_name(layer, size=size)
+                except Exception:
+                    pass
             if key == "buildings":
                 buildings_layer = layer
             elif key == "trees":

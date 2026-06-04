@@ -3,6 +3,10 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.9.0] - 2026-06-05
+
+- Optional **name labels** for buildings and roads: a "Show name labels" toggle labels each by its OSM `name` (only non-empty names) with a white halo. Fully defensive — degrades to unlabelled on builds without the labeling API.
+
 ## [0.8.4] - 2026-06-04
 
 - A **"Clear OSM cache"** button in the dialog deletes all cached Overpass responses from disk and reports how many were removed — handy when the disk cache has grown or you want to force a fresh download.
