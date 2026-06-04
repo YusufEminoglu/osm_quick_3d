@@ -223,8 +223,9 @@ class OsmQuick3DPlugin:
                 base = loaded
             else:
                 gpkg_failed = True
+        color_mode = p.get("building_color", styling.BUILDING_COLOR_FUNCTION)
         try:
-            styling.style_base(base)
+            styling.style_base(base, color_mode)
         except Exception:
             pass
         project = QgsProject.instance()
@@ -234,7 +235,8 @@ class OsmQuick3DPlugin:
         else:
             project.addMapLayer(base)
         if p.get("extrude_3d"):
-            native3d.apply_base_slab(base, depth=BASE_DEPTH_M)
+            native3d.apply_base_slab(
+                base, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode))
         return True, gpkg_failed
 
     # ── main run ───────────────────────────────────────────────────────────

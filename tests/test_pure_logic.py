@@ -134,6 +134,11 @@ def test_building_color_modes():
           styling.building_color_swatches("teal") == list(styling._BUILDING_RAMPS["teal"]))
     check("function swatch is the use palette",
           styling.building_color_swatches() == list(styling.BUILDING_COLORS.values()))
+    check("function base is neutral slate", styling.base_color_hex() == styling._BASE_NEUTRAL)
+    teal_base = styling.base_color_hex("teal")
+    check("teal base is a hex", teal_base.startswith("#") and len(teal_base) == 7)
+    check("teal base differs from neutral", teal_base != styling._BASE_NEUTRAL)
+    check("scale_hex darkens", styling._scale_hex("#ffffff", 0.5) == "#7f7f7f")
 
 
 def test_cache_roundtrip():

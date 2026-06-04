@@ -3,6 +3,10 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.8.3] - 2026-06-04
+
+- The ground base is now tinted to harmonise with the chosen building colours — a darkened tone of the selected tint for the 3D plinth and a light tint of it for the 2D ground fill, so plinth and city read as one palette (neutral slate is kept for By function / By height).
+
 ## [0.8.2] - 2026-06-04
 
 - The dialog now shows a live gradient **preview swatch** under the building-colour selector, updating as you change the mode (low → tall for the tints, the use palette for By function) — so you see the look before running.

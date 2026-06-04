@@ -125,6 +125,31 @@ def _hex_to_rgb(value):
     return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
 
 
+def _scale_hex(value, factor):
+    """Darken (factor<1) or lighten-toward-white (factor>1) a hex colour."""
+    r, g, b = _hex_to_rgb(value)
+    if factor <= 1.0:
+        r, g, b = r * factor, g * factor, b * factor
+    else:
+        t = min(1.0, factor - 1.0)
+        r, g, b = r + (255 - r) * t, g + (255 - g) * t, b + (255 - b) * t
+    return "#%02x%02x%02x" % (int(r), int(g), int(b))
+
+
+_BASE_NEUTRAL = "#5e7274"
+
+
+def base_color_hex(mode=BUILDING_COLOR_FUNCTION) -> str:
+    """The 3D ground-base slab colour, harmonised with the building colour mode.
+
+    For a tinted ramp the base is a darkened tone of that tint, so the plinth and
+    the city read as one palette; function/height keep a neutral slate.
+    """
+    if mode in _BUILDING_RAMPS:
+        return _scale_hex(_BUILDING_RAMPS[mode][1], 0.72)
+    return _BASE_NEUTRAL
+
+
 def _ramp_color_expression(lo_hex, hi_hex):
     """A color_rgb() expression interpolating lo->hi by building height."""
     r1, g1, b1 = _hex_to_rgb(lo_hex)
@@ -244,9 +269,13 @@ def style_trees(layer):
     layer.triggerRepaint()
 
 
-def style_base(layer):
+def style_base(layer, mode=BUILDING_COLOR_FUNCTION):
+    """Subtle 2D ground fill, tinted to match the building colour ``mode``."""
+    slab = base_color_hex(mode)
+    fill = _scale_hex(slab, 1.6)        # light tint of the slab colour
+    outline = _scale_hex(slab, 1.25)
     layer.setRenderer(QgsSingleSymbolRenderer(
-        _fill("#dfe3df", outline="#b9bfb6", outline_w=0.2)))
+        _fill(fill, outline=outline, outline_w=0.2)))
     layer.triggerRepaint()
 
 
