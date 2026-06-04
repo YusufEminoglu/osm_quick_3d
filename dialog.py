@@ -20,6 +20,7 @@ from qgis.PyQt.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QVBoxLayout,
 )
 from qgis.core import QgsMapLayerProxyModel, QgsSettings
@@ -32,6 +33,7 @@ from .osm_download import (
     SHAPE_HEXAGON,
     SHAPE_RECTANGLE,
     SHAPE_ROUNDED,
+    clear_cache,
 )
 from .styling import (
     BUILDING_COLOR_FUNCTION,
@@ -291,7 +293,22 @@ class PluginDialog(QDialog):
             "without hitting the rate-limited Overpass API again."
         )
         form.addRow("", self.cb_use_cache)
+
+        self.clear_cache_btn = QPushButton("Clear OSM cache")
+        self.clear_cache_btn.setToolTip("Delete all cached Overpass responses from disk.")
+        self.clear_cache_btn.clicked.connect(self._on_clear_cache)
+        row = QHBoxLayout()
+        row.addWidget(self.clear_cache_btn)
+        row.addStretch(1)
+        form.addRow("", row)
         return box
+
+    def _on_clear_cache(self):
+        removed, freed = clear_cache()
+        if removed:
+            self.set_status(f"Cleared {removed} cached responses ({freed / 1024:.0f} KB).")
+        else:
+            self.set_status("Cache already empty.")
 
     def _update_color_preview(self):
         """Paint the preview swatch as a left-to-right gradient of the mode's stops."""

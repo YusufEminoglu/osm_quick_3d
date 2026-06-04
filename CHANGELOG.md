@@ -3,6 +3,10 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.8.4] - 2026-06-04
+
+- A **"Clear OSM cache"** button in the dialog deletes all cached Overpass responses from disk and reports how many were removed — handy when the disk cache has grown or you want to force a fresh download.
+
 ## [0.8.3] - 2026-06-04
 
 - The ground base is now tinted to harmonise with the chosen building colours — a darkened tone of the selected tint for the 3D plinth and a light tint of it for the 2D ground fill, so plinth and city read as one palette (neutral slate is kept for By function / By height).

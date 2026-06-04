@@ -155,6 +155,16 @@ def test_cache_roundtrip():
         pass
 
 
+def test_clear_cache():
+    print("clear_cache")
+    osm._write_cache("clear-test-a", {"x": 1})
+    osm._write_cache("clear-test-b", {"y": 2})
+    removed, freed = osm.clear_cache()
+    check("removed at least the two written", removed >= 2)
+    check("freed some bytes", freed > 0)
+    check("cache empty afterwards", osm._read_cache("clear-test-a") is None)
+
+
 def test_shape_and_base_constants():
     print("shape + base constants")
     check("four area shapes", len(osm.AREA_SHAPES) == 4)
@@ -168,7 +178,7 @@ def main():
     for test in (test_parse_osm_number, test_building_levels, test_utm_epsg,
                  test_waterway_width, test_building_color_expression,
                  test_building_color_modes, test_cache_roundtrip,
-                 test_shape_and_base_constants):
+                 test_clear_cache, test_shape_and_base_constants):
         test()
     print()
     if _failures:

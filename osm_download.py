@@ -40,7 +40,7 @@ OVERPASS_ENDPOINTS = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
-USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.8.3 (https://github.com/YusufEminoglu/osm_quick_3d)"
+USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.8.4 (https://github.com/YusufEminoglu/osm_quick_3d)"
 DEFAULT_TIMEOUT_S = 60
 
 # Disk cache for Overpass responses. The public API is frequently rate-limited
@@ -88,6 +88,24 @@ def _write_cache(query: str, payload: dict) -> None:
             json.dump(payload, handle)
     except (OSError, TypeError, ValueError):
         pass
+
+
+def clear_cache():
+    """Delete all cached Overpass responses. Returns (files_removed, bytes_freed)."""
+    import glob
+
+    removed, freed = 0, 0
+    try:
+        for path in glob.glob(os.path.join(_cache_dir(), "*.json")):
+            try:
+                freed += os.path.getsize(path)
+                os.remove(path)
+                removed += 1
+            except OSError:
+                pass
+    except OSError:
+        pass
+    return removed, freed
 
 
 # --------------------------------------------------------------------------

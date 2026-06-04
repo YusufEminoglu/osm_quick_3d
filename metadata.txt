@@ -3,7 +3,7 @@ name=OSM Quick 3D
 qgisMinimumVersion=3.28
 qgisMaximumVersion=3.99
 description=One-click OpenStreetMap into native QGIS: function-styled layers plus flat-roof 3D building massing on a selectable study-area shape (rectangle, rounded rectangle, circle or hexagon) over a recessed ground base, built for larger areas.
-version=0.8.3
+version=0.8.4
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -23,6 +23,8 @@ hasProcessingProvider=no
 license=MIT
 
 changelog=
+    OSM Quick 3D 0.8.4
+        - A "Clear OSM cache" button in the dialog deletes all cached Overpass responses from disk and reports how many were removed.
     OSM Quick 3D 0.8.3
         - The ground base is tinted to harmonise with the chosen building colours (a darkened tone of the tint for the 3D plinth, a light tint for the 2D fill); neutral slate for By function / By height.
     OSM Quick 3D 0.8.2
