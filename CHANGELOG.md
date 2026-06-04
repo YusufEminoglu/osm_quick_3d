@@ -3,6 +3,12 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.2.0] - 2026-06-04
+
+- 3D massing is now coloured by OSM function (residential, commercial, industrial, civic, worship) in the same palette as the 2D legend, instead of a single flat grey — via a data-defined diffuse colour on the 3D material.
+- New height-exaggeration factor (0.5×–5.0×) in the dialog multiplies the extruded building heights, so low-rise districts read in the 3D Map View. 1.0× keeps true OSM heights.
+- Every downloaded layer now lands inside one tidy "OSM Quick 3D — EPSG:xxxx" layer-tree group, keeping the legend clean on larger areas.
+
 ## [0.1.0] - 2026-06-04
 
 - Initial release.

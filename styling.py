@@ -84,6 +84,17 @@ GREEN_CLASS_EXPR = (
 )
 
 
+def building_color_expression() -> str:
+    """A QGIS expression returning each building's function colour as a hex string.
+
+    Wraps ``BUILDING_CLASS_EXPR`` (which yields a class key) and maps the key to
+    the same ``BUILDING_COLORS`` hex used by the 2D renderer, so the native 3D
+    massing reads in the same palette as the flat map and the legend.
+    """
+    cases = " ".join(f"WHEN '{key}' THEN '{hexv}'" for key, hexv in BUILDING_COLORS.items())
+    return f"CASE ({BUILDING_CLASS_EXPR}) {cases} ELSE '{BUILDING_COLORS['other']}' END"
+
+
 # ── symbol factories ────────────────────────────────────────────────────────
 def _fill(color_hex, outline="#8d8378", outline_w=0.16):
     return QgsFillSymbol.createSimple({

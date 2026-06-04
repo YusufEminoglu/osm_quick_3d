@@ -122,6 +122,14 @@ class OsmQuick3DPlugin:
             ("buildings", p["want_buildings"], styling.style_buildings),
         ]
 
+    def _make_group(self, epsg):
+        """A fresh layer-tree group at the top, to keep the legend tidy on big areas."""
+        try:
+            root = QgsProject.instance().layerTreeRoot()
+            return root.insertGroup(0, f"OSM Quick 3D — EPSG:{epsg}")
+        except Exception:
+            return None
+
     def _move_basemap_bottom(self, basemap):
         try:
             root = QgsProject.instance().layerTreeRoot()
@@ -167,6 +175,7 @@ class OsmQuick3DPlugin:
             QApplication.restoreOverrideCursor()
 
         project = QgsProject.instance()
+        group = self._make_group(epsg)
         added, total, buildings_layer = [], 0, None
         for key, wanted, style_fn in self._layer_specs(p):
             if not wanted:
@@ -178,7 +187,13 @@ class OsmQuick3DPlugin:
                 style_fn(layer)
             except Exception:
                 pass
-            project.addMapLayer(layer)
+            if group is not None:
+                # addToLegend=False, then insert at the top of our group so the
+                # spec's bottom-to-top order ends with buildings drawn on top.
+                project.addMapLayer(layer, False)
+                group.insertLayer(0, layer)
+            else:
+                project.addMapLayer(layer)
             total += layer.featureCount()
             added.append(f"{layer.featureCount()} {key}")
             if key == "buildings":
@@ -187,11 +202,20 @@ class OsmQuick3DPlugin:
         if not added:
             self._error("Sonuç yok", "Bu alanda seçilen katmanlarda OSM objesi bulunamadı.")
             self._set_status("0 obje.", error=True)
+            if group is not None:
+                try:
+                    QgsProject.instance().layerTreeRoot().removeChildNode(group)
+                except Exception:
+                    pass
             return
 
         extruded = False
         if p["extrude_3d"] and buildings_layer is not None:
-            extruded = native3d.apply_building_extrusion(buildings_layer)
+            extruded = native3d.apply_building_extrusion(
+                buildings_layer,
+                height_scale=p.get("height_scale", 1.0),
+                color_expr=styling.building_color_expression(),
+            )
 
         if p["basemap"] is not None:
             self._move_basemap_bottom(p["basemap"])

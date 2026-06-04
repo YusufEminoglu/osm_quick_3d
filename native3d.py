@@ -20,6 +20,17 @@ from __future__ import annotations
 EXTRUSION_EXPRESSION = 'coalesce("height", "building_levels" * 3, 9)'
 
 
+def _extrusion_expression(height_scale=1.0):
+    """Per-feature extrusion height (m), optionally exaggerated for flat cities."""
+    try:
+        scale = float(height_scale)
+    except (TypeError, ValueError):
+        scale = 1.0
+    if scale and abs(scale - 1.0) > 1e-6:
+        return f"({EXTRUSION_EXPRESSION}) * {scale:g}"
+    return EXTRUSION_EXPRESSION
+
+
 def _make_material(color_hex):
     try:
         from qgis._3d import QgsPhongMaterialSettings
@@ -37,6 +48,44 @@ def _make_material(color_hex):
     return mat
 
 
+def _apply_material_color_expression(material, color_expr):
+    """Data-define the material's diffuse colour from a per-feature expression.
+
+    Lets one 3D renderer paint every building in its OSM-function colour (the
+    same palette as the 2D legend). Degrades to a no-op on builds whose material
+    settings don't expose data-defined properties; the flat fallback colour set
+    by ``_make_material`` then stands.
+    """
+    if material is None or not color_expr:
+        return
+    try:
+        from qgis.core import QgsProperty
+    except Exception:
+        return
+    ddp_getter = getattr(material, "dataDefinedProperties", None)
+    ddp_setter = getattr(material, "setDataDefinedProperties", None)
+    if ddp_getter is None or ddp_setter is None:
+        return
+    prop_key = None
+    for owner_name in ("QgsAbstractMaterialSettings", "QgsPhongMaterialSettings"):
+        try:
+            owner = __import__("qgis._3d", fromlist=[owner_name])
+            owner = getattr(owner, owner_name)
+        except Exception:
+            continue
+        prop_key = getattr(owner, "Diffuse", None)
+        if prop_key is not None:
+            break
+    if prop_key is None:
+        return
+    try:
+        ddp = ddp_getter()
+        ddp.setProperty(prop_key, QgsProperty.fromExpression(color_expr))
+        ddp_setter(ddp)
+    except Exception:
+        pass
+
+
 def _clamp_to_terrain(symbol):
     """Rest the prisms on the terrain/basemap rather than at z=0."""
     for module in ("qgis.core", "qgis._3d"):
@@ -48,11 +97,14 @@ def _clamp_to_terrain(symbol):
             continue
 
 
-def apply_building_extrusion(layer, color_hex="#cac5bf"):
+def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color_expr=None):
     """Attach a 3D renderer that extrudes the building polygons.
 
-    Returns True if a 3D renderer was set, False if this QGIS build has no usable
-    3D module (the caller then just keeps the flat 2D layers).
+    ``height_scale`` exaggerates every prism (1.0 = true OSM height); ``color_expr``
+    is an optional per-feature QGIS expression returning a hex colour so the
+    massing matches the 2D function palette. Returns True if a 3D renderer was set,
+    False if this QGIS build has no usable 3D module (the caller then just keeps
+    the flat 2D layers).
     """
     try:
         from qgis._3d import QgsVectorLayer3DRenderer, QgsPolygon3DSymbol
@@ -60,10 +112,11 @@ def apply_building_extrusion(layer, color_hex="#cac5bf"):
         return False
 
     symbol = QgsPolygon3DSymbol()
+    extrusion_expr = _extrusion_expression(height_scale)
 
     # Static fallback height first, then a data-defined override from OSM.
     try:
-        symbol.setExtrusionHeight(9.0)
+        symbol.setExtrusionHeight(9.0 * float(height_scale or 1.0))
     except Exception:
         pass
     try:
@@ -71,7 +124,7 @@ def apply_building_extrusion(layer, color_hex="#cac5bf"):
         prop_key = getattr(QgsPolygon3DSymbol, "PropertyExtrusionHeight", None)
         if prop_key is not None:
             ddp = symbol.dataDefinedProperties()
-            ddp.setProperty(prop_key, QgsProperty.fromExpression(EXTRUSION_EXPRESSION))
+            ddp.setProperty(prop_key, QgsProperty.fromExpression(extrusion_expr))
             symbol.setDataDefinedProperties(ddp)
     except Exception:
         pass
@@ -79,6 +132,7 @@ def apply_building_extrusion(layer, color_hex="#cac5bf"):
     _clamp_to_terrain(symbol)
 
     material = _make_material(color_hex)
+    _apply_material_color_expression(material, color_expr)
     if material is not None:
         for setter in ("setMaterialSettings", "setMaterial"):
             fn = getattr(symbol, setter, None)

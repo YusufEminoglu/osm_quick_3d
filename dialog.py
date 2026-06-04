@@ -106,6 +106,19 @@ class PluginDialog(QDialog):
         self.cb_buildings.toggled.connect(self.cb_extrude.setEnabled)
         form.addRow(layers)
 
+        self.height_scale = QDoubleSpinBox()
+        self.height_scale.setRange(0.5, 5.0)
+        self.height_scale.setSingleStep(0.25)
+        self.height_scale.setDecimals(2)
+        self.height_scale.setSuffix("×")
+        self.height_scale.setValue(1.0)
+        self.height_scale.setToolTip(
+            "3D bina yüksekliklerini abartır (1.0 = gerçek OSM yüksekliği). "
+            "Düz şehirlerde 1.5–2.0 massing'i okunur kılar."
+        )
+        self.cb_extrude.toggled.connect(self.height_scale.setEnabled)
+        form.addRow("Yükseklik abartma:", self.height_scale)
+
         self.basemap = QgsMapLayerComboBox()
         self.basemap.setFilters(QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
         self.basemap.setAllowEmptyLayer(True)
@@ -137,6 +150,7 @@ class PluginDialog(QDialog):
             "max_km2": self.max_km2.value(),
             "want_buildings": self.cb_buildings.isChecked(),
             "extrude_3d": self.cb_extrude.isChecked() and self.cb_buildings.isChecked(),
+            "height_scale": self.height_scale.value(),
             "want_roads": self.cb_roads.isChecked(),
             "want_water": self.cb_water.isChecked(),
             "want_greens": self.cb_greens.isChecked(),
@@ -165,7 +179,12 @@ class PluginDialog(QDialog):
         self.cb_trees.setChecked(_truthy(s.value(f"{_S}/trees"), False))
         self.cb_furniture.setChecked(_truthy(s.value(f"{_S}/furniture"), False))
         self.cb_open3d.setChecked(_truthy(s.value(f"{_S}/open3d"), True))
+        try:
+            self.height_scale.setValue(float(s.value(f"{_S}/height_scale", 1.0)))
+        except (TypeError, ValueError):
+            pass
         self.cb_extrude.setEnabled(self.cb_buildings.isChecked())
+        self.height_scale.setEnabled(self.cb_extrude.isChecked())
 
     def _save(self, p):
         s = QgsSettings()
@@ -179,6 +198,7 @@ class PluginDialog(QDialog):
         s.setValue(f"{_S}/trees", p["want_trees"])
         s.setValue(f"{_S}/furniture", p["want_furniture"])
         s.setValue(f"{_S}/open3d", p["open_3d"])
+        s.setValue(f"{_S}/height_scale", p["height_scale"])
 
     def set_status(self, text, *, error=False):
         self.status.setStyleSheet(f"color:{'#b71c1c' if error else '#1b5e20'};padding:4px;")
