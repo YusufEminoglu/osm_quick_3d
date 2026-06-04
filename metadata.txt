@@ -3,7 +3,7 @@ name=OSM Quick 3D
 qgisMinimumVersion=3.28
 qgisMaximumVersion=3.99
 description=One-click OpenStreetMap into native QGIS: function-styled layers plus flat-roof 3D building massing and a basemap underlay, built for larger areas.
-version=0.6.0
+version=0.6.1
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -23,6 +23,8 @@ hasProcessingProvider=no
 license=MIT
 
 changelog=
+    OSM Quick 3D 0.6.1
+        - Fix: polygon/line layers created as Multi* so a feature split into several parts by boundary-clipping is no longer silently dropped (matters most on larger areas). Adds a headless test harness for the pure-Python logic.
     OSM Quick 3D 0.6.0
         - Buildings carry a computed footprint_m2 (polygon area in the metric CRS) and an estimated gfa_m2 (footprint x floors) column, in both the memory and GeoPackage outputs, ready to label/sum/analyse.
         - The run summary reports the total building footprint and estimated gross floor area.

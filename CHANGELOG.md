@@ -3,6 +3,10 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.6.1] - 2026-06-04
+
+- Fix: building/green/road/water/bike layers are now created as Multi* (MultiPolygon / MultiLineString), so a feature that boundary-clipping splits into several parts is no longer silently dropped — matters most on larger areas where clipping is common. Adds a headless `tests/test_pure_logic.py` harness (25 checks) covering the pure-Python parsing, floor-count, UTM, waterway-width, colour-expression and cache logic.
+
 ## [0.6.0] - 2026-06-04
 
 - Buildings now carry a computed `footprint_m2` (polygon area in the metric CRS) and an estimated `gfa_m2` (footprint × floors) column — present in both the memory and GeoPackage outputs — so the result is ready to label, sum or analyse for quick planning quantities.

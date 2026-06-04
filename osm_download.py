@@ -40,7 +40,7 @@ OVERPASS_ENDPOINTS = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
-USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.6.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
+USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.6.1 (https://github.com/YusufEminoglu/osm_quick_3d)"
 DEFAULT_TIMEOUT_S = 60
 
 # Disk cache for Overpass responses. The public API is frequently rate-limited
@@ -374,25 +374,25 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
     # floor area = footprint x floors) are computed here so both the memory and the
     # GeoPackage outputs carry them, ready to label, sum or analyse in QGIS.
     buildings_layer, b_pr = _make_layer(
-        "OSM Buildings", "Polygon", epsg_dest,
+        "OSM Buildings", "MultiPolygon", epsg_dest,
         [("osm_id", QVariant.String), ("building", QVariant.String),
          ("building_levels", QVariant.Int), ("height", QVariant.Double),
          ("footprint_m2", QVariant.Double), ("gfa_m2", QVariant.Double),
          ("name", QVariant.String)],
     )
     roads_layer, r_pr = _make_layer(
-        "OSM Roads", "LineString", epsg_dest,
+        "OSM Roads", "MultiLineString", epsg_dest,
         [("osm_id", QVariant.String), ("highway", QVariant.String),
          ("width", QVariant.Double), ("name", QVariant.String)],
     )
     # Dedicated cycleways (highway=cycleway) split off into their own bike-lane layer.
     bikelanes_layer, bl_pr = _make_layer(
-        "OSM Bike lanes", "LineString", epsg_dest,
+        "OSM Bike lanes", "MultiLineString", epsg_dest,
         [("osm_id", QVariant.String), ("highway", QVariant.String),
          ("width", QVariant.Double), ("name", QVariant.String)],
     )
     greens_layer, g_pr = _make_layer(
-        "OSM Greens", "Polygon", epsg_dest,
+        "OSM Greens", "MultiPolygon", epsg_dest,
         [("osm_id", QVariant.String), ("leisure", QVariant.String),
          ("landuse", QVariant.String), ("natural", QVariant.String), ("name", QVariant.String)],
     )
@@ -400,10 +400,10 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
         "OSM Trees", "Point", epsg_dest,
         [("osm_id", QVariant.String), ("natural", QVariant.String), ("height", QVariant.Double)],
     )
-    # Waterways are clipped like roads; the memory provider accepts multi-part
-    # clip results into a LineString layer (same as the roads layer above).
+    # Polygon/line layers are Multi* so that boundary-clipping a feature into
+    # several parts never drops it (a single part is promoted automatically).
     waterlines_layer, w_pr = _make_layer(
-        "OSM Waterlines", "LineString", epsg_dest,
+        "OSM Waterlines", "MultiLineString", epsg_dest,
         [("osm_id", QVariant.String), ("waterway", QVariant.String),
          ("width", QVariant.Double), ("name", QVariant.String)],
     )
