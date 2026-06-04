@@ -3,6 +3,11 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.8.0] - 2026-06-04
+
+- **Selectable building colours**, applied identically in 2D and 3D: by OSM function (the categorized use palette), or a soft height-graduated tint — **By height** (cool neutral), **Soft tinted gray**, **Soft tinted warm** or **Soft teal**. The tint modes drive both the 2D fill and the native 3D diffuse from one `color_rgb` ramp by building height, so the massing always matches the map.
+- **Elite-soft dialog**: a cohesive light theme with rounded white group cards, a gradient header, soft focus accents and a teal primary button — a more polished, "perfect" look.
+
 ## [0.7.1] - 2026-06-04
 
 - Security/quality fixes to clear the QGIS Plugin Hub scan that blocked 0.7.0: the Overpass cache filename now uses SHA-256 instead of SHA-1 (it was only ever a filename digest, never security), and two Flake8 nits (an unused import and a binary-operator line break) are resolved. No functional change.
@@ -14,6 +19,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: 
 - **Fully English UI**: every dialog, status, error and message-bar string is now English.
 - **Redesigned dialog**: a header with the plugin icon and grouped sections (Study area · Layers · 3D & base · Output & data) instead of the old flat form.
 - **New plugin icon**: an isometric city on a hexagonal boundary with a ground plinth, in the plugin's function palette.
+
+## [0.6.1] - 2026-06-04
 
 - Fix: building/green/road/water/bike layers are now created as Multi* (MultiPolygon / MultiLineString), so a feature that boundary-clipping splits into several parts is no longer silently dropped — matters most on larger areas where clipping is common. Adds a headless `tests/test_pure_logic.py` harness (25 checks) covering the pure-Python parsing, floor-count, UTM, waterway-width, colour-expression and cache logic.
 

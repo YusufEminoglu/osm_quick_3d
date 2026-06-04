@@ -33,6 +33,7 @@ from .osm_download import (
     SHAPE_RECTANGLE,
     SHAPE_ROUNDED,
 )
+from .styling import BUILDING_COLOR_FUNCTION, BUILDING_COLOR_MODES
 
 _S = "osm_quick_3d"
 
@@ -58,9 +59,57 @@ class PluginDialog(QDialog):
         self._restore()
 
     # ── UI ───────────────────────────────────────────────────────────────
+    _QSS = """
+    QDialog { background: #eef1f2; }
+    QGroupBox {
+        font-weight: 600;
+        color: #34474a;
+        border: 1px solid #e0e5e6;
+        border-radius: 12px;
+        margin-top: 16px;
+        padding: 14px 14px 12px 14px;
+        background: #ffffff;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        subcontrol-position: top left;
+        left: 14px;
+        top: 2px;
+        padding: 2px 8px;
+        color: #5d7174;
+        background: transparent;
+    }
+    QLabel { color: #3c4749; background: transparent; }
+    QCheckBox { spacing: 9px; padding: 3px 0; color: #34474a; background: transparent; }
+    QCheckBox::indicator { width: 17px; height: 17px; }
+    QComboBox, QDoubleSpinBox {
+        border: 1px solid #d2d9da;
+        border-radius: 8px;
+        padding: 6px 9px;
+        background: #fbfcfc;
+        min-height: 20px;
+        selection-background-color: #cfe4e1;
+        selection-color: #21302f;
+    }
+    QComboBox:hover, QDoubleSpinBox:hover { border-color: #9cc3bf; }
+    QComboBox:focus, QDoubleSpinBox:focus { border-color: #3f8079; background: #ffffff; }
+    QComboBox::drop-down { border: 0; width: 22px; }
+    QComboBox QAbstractItemView {
+        border: 1px solid #d2d9da; border-radius: 8px; padding: 4px;
+        background: #ffffff; selection-background-color: #cfe4e1; selection-color: #21302f;
+    }
+    QPushButton {
+        border-radius: 9px; padding: 8px 16px;
+        background: #eef1f2; border: 1px solid #d2d9da; color: #34474a;
+    }
+    QPushButton:hover { background: #e4e9ea; }
+    """
+
     def _build_ui(self):
+        self.setStyleSheet(self._QSS)
         root = QVBoxLayout(self)
-        root.setSpacing(10)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(12)
 
         root.addWidget(self._header())
         root.addWidget(self._group_area())
@@ -71,12 +120,20 @@ class PluginDialog(QDialog):
 
         self.status = QLabel("Ready")
         self.status.setWordWrap(True)
-        self.status.setStyleSheet("color:#555;padding:6px;background:#f4f5f4;border-radius:4px;")
+        self.status.setStyleSheet(
+            "color:#52666a;padding:9px 11px;background:#ffffff;"
+            "border:1px solid #e0e5e6;border-radius:9px;"
+        )
         root.addWidget(self.status)
 
         bb = QDialogButtonBox()
         self.run_btn = bb.addButton("Download & build 3D", QDialogButtonBox.ButtonRole.AcceptRole)
-        self.run_btn.setStyleSheet("font-weight:600;padding:6px 14px;")
+        self.run_btn.setStyleSheet(
+            "QPushButton{background:#3f8079;color:#ffffff;font-weight:600;border:0;"
+            "border-radius:9px;padding:9px 20px;}"
+            "QPushButton:hover{background:#356c66;}"
+            "QPushButton:pressed{background:#2c5b56;}"
+        )
         bb.addButton(QDialogButtonBox.StandardButton.Close)
         bb.accepted.connect(self._emit_run)
         bb.rejected.connect(self.close)
@@ -84,9 +141,12 @@ class PluginDialog(QDialog):
 
     def _header(self):
         box = QFrame()
-        box.setStyleSheet("background:#37494c;border-radius:6px;")
+        box.setStyleSheet(
+            "QFrame{background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            "stop:0 #3d5256, stop:1 #314548);border-radius:12px;}"
+        )
         lay = QHBoxLayout(box)
-        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setContentsMargins(14, 12, 14, 12)
         icon_path = os.path.join(os.path.dirname(__file__), "icons", "icon.png")
         if os.path.exists(icon_path):
             pix = QIcon(icon_path).pixmap(40, 40)
@@ -174,6 +234,15 @@ class PluginDialog(QDialog):
         )
         form.addRow("Height exaggeration:", self.height_scale)
 
+        self.building_color = QComboBox()
+        for value, label in BUILDING_COLOR_MODES:
+            self.building_color.addItem(label, value)
+        self.building_color.setToolTip(
+            "How buildings are coloured, in 2D and 3D alike: by OSM function, "
+            "or a soft height-graduated tint (gray, warm or teal)."
+        )
+        form.addRow("Building colours:", self.building_color)
+
         self.cb_base = QCheckBox("Add ground base (recessed −5 m slab, +5 m buffer)")
         self.cb_base.setToolTip(
             "A ground slab the city stands on: the study area buffered outward by "
@@ -223,6 +292,7 @@ class PluginDialog(QDialog):
             "want_buildings": self.cb_buildings.isChecked(),
             "extrude_3d": self.cb_extrude.isChecked() and self.cb_buildings.isChecked(),
             "height_scale": self.height_scale.value(),
+            "building_color": self.building_color.currentData(),
             "want_base": self.cb_base.isChecked(),
             "want_roads": self.cb_roads.isChecked(),
             "want_water": self.cb_water.isChecked(),
@@ -245,6 +315,9 @@ class PluginDialog(QDialog):
         sidx = self.shape.findData(s.value(f"{_S}/shape", SHAPE_RECTANGLE))
         if sidx >= 0:
             self.shape.setCurrentIndex(sidx)
+        cidx = self.building_color.findData(s.value(f"{_S}/building_color", BUILDING_COLOR_FUNCTION))
+        if cidx >= 0:
+            self.building_color.setCurrentIndex(cidx)
         try:
             self.max_km2.setValue(float(s.value(f"{_S}/max_km2", 6.0)))
         except (TypeError, ValueError):
@@ -271,6 +344,7 @@ class PluginDialog(QDialog):
         s = QgsSettings()
         s.setValue(f"{_S}/area_source", p["area_source"])
         s.setValue(f"{_S}/shape", p["shape"])
+        s.setValue(f"{_S}/building_color", p["building_color"])
         s.setValue(f"{_S}/max_km2", p["max_km2"])
         s.setValue(f"{_S}/buildings", p["want_buildings"])
         s.setValue(f"{_S}/extrude", self.cb_extrude.isChecked())

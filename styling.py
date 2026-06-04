@@ -14,8 +14,10 @@ from qgis.core import (
     QgsFillSymbol,
     QgsLineSymbol,
     QgsMarkerSymbol,
+    QgsProperty,
     QgsRendererCategory,
     QgsSingleSymbolRenderer,
+    QgsSymbolLayer,
 )
 
 # ── palettes ────────────────────────────────────────────────────────────────
@@ -84,13 +86,62 @@ GREEN_CLASS_EXPR = (
 )
 
 
-def building_color_expression() -> str:
-    """A QGIS expression returning each building's function colour as a hex string.
+# ── building colour modes ────────────────────────────────────────────────────
+# Selectable in the dialog. "function" keeps the categorized OSM-use palette;
+# the rest are soft height-graduated ramps (light = low, deeper = tall) in a
+# single tint, applied identically to the 2D fill and the 3D diffuse colour.
+BUILDING_COLOR_FUNCTION = "function"
 
-    Wraps ``BUILDING_CLASS_EXPR`` (which yields a class key) and maps the key to
-    the same ``BUILDING_COLORS`` hex used by the 2D renderer, so the native 3D
-    massing reads in the same palette as the flat map and the legend.
+# (light, deep) endpoints of each soft tinted ramp.
+_BUILDING_RAMPS = {
+    "height": ("#e2e8ee", "#56657d"),     # cool neutral, light steel -> slate
+    "soft_gray": ("#e8e9e8", "#6e746f"),  # tinted gray
+    "soft_warm": ("#ede2d4", "#8a7460"),  # tinted warm
+    "teal": ("#dbeae7", "#3c7c77"),       # soft teal
+}
+
+# (value, label) for the dialog combo.
+BUILDING_COLOR_MODES = (
+    (BUILDING_COLOR_FUNCTION, "By function (OSM use)"),
+    ("height", "By height (graduated)"),
+    ("soft_gray", "Soft tinted gray"),
+    ("soft_warm", "Soft tinted warm"),
+    ("teal", "Soft teal"),
+)
+
+# Per-feature extrusion/colour height, in metres (tagged height, else floors*3).
+_BUILDING_HEIGHT_EXPR = 'coalesce("height", "building_levels" * 3, 9)'
+_RAMP_LO_M, _RAMP_HI_M = 3.0, 60.0
+
+
+def _hex_to_rgb(value):
+    value = value.lstrip("#")
+    return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+
+
+def _ramp_color_expression(lo_hex, hi_hex):
+    """A color_rgb() expression interpolating lo->hi by building height."""
+    r1, g1, b1 = _hex_to_rgb(lo_hex)
+    r2, g2, b2 = _hex_to_rgb(hi_hex)
+    h = _BUILDING_HEIGHT_EXPR
+
+    def part(a, b):
+        # scale_linear clamps to the output range outside [lo, hi] metres.
+        return f"scale_linear({h}, {_RAMP_LO_M}, {_RAMP_HI_M}, {a}, {b})"
+
+    return f"color_rgb({part(r1, r2)}, {part(g1, g2)}, {part(b1, b2)})"
+
+
+def building_color_expression(mode=BUILDING_COLOR_FUNCTION) -> str:
+    """A QGIS expression returning each building's colour for ``mode``.
+
+    For ``function`` it wraps ``BUILDING_CLASS_EXPR`` into the OSM-use hex palette;
+    for the height/tinted modes it returns a soft ``color_rgb`` ramp by height. The
+    same expression drives the 2D fill and the native 3D diffuse colour, so the
+    massing always matches the flat map.
     """
+    if mode in _BUILDING_RAMPS:
+        return _ramp_color_expression(*_BUILDING_RAMPS[mode])
     cases = " ".join(f"WHEN '{key}' THEN '{hexv}'" for key, hexv in BUILDING_COLORS.items())
     return f"CASE ({BUILDING_CLASS_EXPR}) {cases} ELSE '{BUILDING_COLORS['other']}' END"
 
@@ -129,9 +180,24 @@ def _categorized(expression, mapping_to_symbol):
 
 
 # ── per-layer styling ───────────────────────────────────────────────────────
-def style_buildings(layer):
-    mapping = {k: _fill(v) for k, v in BUILDING_COLORS.items()}
-    layer.setRenderer(_categorized(BUILDING_CLASS_EXPR, mapping))
+def style_buildings(layer, mode=BUILDING_COLOR_FUNCTION):
+    """Style buildings by ``mode``: function categories or a soft height ramp.
+
+    Ramp modes use one fill symbol whose colour is data-defined by the same
+    expression the 3D massing uses, so 2D and 3D stay identical.
+    """
+    if mode in _BUILDING_RAMPS:
+        symbol = _fill("#cfd6dd")
+        expr = building_color_expression(mode)
+        try:
+            symbol.symbolLayer(0).setDataDefinedProperty(
+                QgsSymbolLayer.PropertyFillColor, QgsProperty.fromExpression(expr))
+        except Exception:
+            pass
+        layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+    else:
+        mapping = {k: _fill(v) for k, v in BUILDING_COLORS.items()}
+        layer.setRenderer(_categorized(BUILDING_CLASS_EXPR, mapping))
     layer.triggerRepaint()
 
 

@@ -122,6 +122,7 @@ class OsmQuick3DPlugin:
         def points(color_hex, size):
             return lambda layer: styling.style_points(layer, color_hex, size)
 
+        color_mode = p.get("building_color", styling.BUILDING_COLOR_FUNCTION)
         return [
             ("greens", p["want_greens"], styling.style_greens),
             ("waterlines", p["want_water"], styling.style_water),
@@ -132,7 +133,8 @@ class OsmQuick3DPlugin:
             ("benches", p["want_furniture"], points("#a98c6a", 1.6)),
             ("lights", p["want_furniture"], points("#d8c98a", 1.6)),
             ("trashbins", p["want_furniture"], points("#8a9a8a", 1.4)),
-            ("buildings", p["want_buildings"], styling.style_buildings),
+            ("buildings", p["want_buildings"],
+             lambda layer: styling.style_buildings(layer, color_mode)),
         ]
 
     def _ask_gpkg_path(self):
@@ -329,7 +331,8 @@ class OsmQuick3DPlugin:
             extruded = native3d.apply_building_extrusion(
                 buildings_layer,
                 height_scale=p.get("height_scale", 1.0),
-                color_expr=styling.building_color_expression(),
+                color_expr=styling.building_color_expression(
+                    p.get("building_color", styling.BUILDING_COLOR_FUNCTION)),
             )
         # Tree points get a matching 3D pass (green canopies) when 3D is on.
         if p["extrude_3d"] and trees_layer is not None:

@@ -112,10 +112,21 @@ def test_waterway_width():
 def test_building_color_expression():
     print("building_color_expression")
     expr = styling.building_color_expression()
-    check("is a CASE expression", expr.startswith("CASE"))
+    check("function default is CASE", expr.startswith("CASE"))
     check("maps residential hex", styling.BUILDING_COLORS["residential"] in expr)
     check("has ELSE fallback", "ELSE" in expr and styling.BUILDING_COLORS["other"] in expr)
     check("references building class column", '"building"' in expr)
+
+
+def test_building_color_modes():
+    print("building colour modes (height/tints)")
+    check("five modes offered", len(styling.BUILDING_COLOR_MODES) == 5)
+    check("function is first", styling.BUILDING_COLOR_MODES[0][0] == styling.BUILDING_COLOR_FUNCTION)
+    for mode in ("height", "soft_gray", "soft_warm", "teal"):
+        expr = styling.building_color_expression(mode)
+        check(f"{mode} ramp uses color_rgb", expr.startswith("color_rgb("))
+        check(f"{mode} ramp scales by height", "scale_linear(coalesce" in expr)
+    check("hex parse", styling._hex_to_rgb("#ff8000") == (255, 128, 0))
 
 
 def test_cache_roundtrip():
@@ -144,7 +155,8 @@ def test_shape_and_base_constants():
 def main():
     for test in (test_parse_osm_number, test_building_levels, test_utm_epsg,
                  test_waterway_width, test_building_color_expression,
-                 test_cache_roundtrip, test_shape_and_base_constants):
+                 test_building_color_modes, test_cache_roundtrip,
+                 test_shape_and_base_constants):
         test()
     print()
     if _failures:
