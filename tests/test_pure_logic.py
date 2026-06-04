@@ -130,6 +130,10 @@ def test_building_color_modes():
         check(f"{mode} ramp uses color_rgb", expr.startswith("color_rgb("))
         check(f"{mode} ramp scales by height", "scale_linear(coalesce" in expr)
     check("hex parse", styling._hex_to_rgb("#ff8000") == (255, 128, 0))
+    check("teal swatch is its 2 ramp stops",
+          styling.building_color_swatches("teal") == list(styling._BUILDING_RAMPS["teal"]))
+    check("function swatch is the use palette",
+          styling.building_color_swatches() == list(styling.BUILDING_COLORS.values()))
 
 
 def test_cache_roundtrip():

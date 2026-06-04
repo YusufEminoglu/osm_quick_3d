@@ -138,6 +138,16 @@ def _ramp_color_expression(lo_hex, hi_hex):
     return f"color_rgb({part(r1, r2)}, {part(g1, g2)}, {part(b1, b2)})"
 
 
+def building_color_swatches(mode=BUILDING_COLOR_FUNCTION):
+    """Hex stops representing ``mode`` for a dialog preview swatch.
+
+    For ramp modes it's (light, deep); for ``function`` it's the OSM-use palette.
+    """
+    if mode in _BUILDING_RAMPS:
+        return list(_BUILDING_RAMPS[mode])
+    return list(BUILDING_COLORS.values())
+
+
 def building_color_expression(mode=BUILDING_COLOR_FUNCTION) -> str:
     """A QGIS expression returning each building's colour for ``mode``.
 

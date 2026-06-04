@@ -3,6 +3,10 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.8.2] - 2026-06-04
+
+- The dialog now shows a live gradient **preview swatch** under the building-colour selector, updating as you change the mode (low → tall for the tints, the use palette for By function) — so you see the look before running.
+
 ## [0.8.1] - 2026-06-04
 
 - Three more soft building-colour tints: **Soft salmon**, **Soft purple** and **Soft sand**, alongside the existing gray, warm and teal (and By function / By height).

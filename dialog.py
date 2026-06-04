@@ -33,7 +33,11 @@ from .osm_download import (
     SHAPE_RECTANGLE,
     SHAPE_ROUNDED,
 )
-from .styling import BUILDING_COLOR_FUNCTION, BUILDING_COLOR_MODES
+from .styling import (
+    BUILDING_COLOR_FUNCTION,
+    BUILDING_COLOR_MODES,
+    building_color_swatches,
+)
 
 _S = "osm_quick_3d"
 
@@ -239,9 +243,15 @@ class PluginDialog(QDialog):
             self.building_color.addItem(label, value)
         self.building_color.setToolTip(
             "How buildings are coloured, in 2D and 3D alike: by OSM function, "
-            "or a soft height-graduated tint (gray, warm or teal)."
+            "or a soft height-graduated tint (gray, warm, teal, salmon, purple or sand)."
         )
         form.addRow("Building colours:", self.building_color)
+
+        self.color_preview = QFrame()
+        self.color_preview.setFixedHeight(14)
+        self.color_preview.setToolTip("Preview of the selected building-colour ramp (low → tall).")
+        self.building_color.currentIndexChanged.connect(self._update_color_preview)
+        form.addRow("", self.color_preview)
 
         self.cb_base = QCheckBox("Add ground base (recessed −5 m slab, +5 m buffer)")
         self.cb_base.setToolTip(
@@ -282,6 +292,20 @@ class PluginDialog(QDialog):
         )
         form.addRow("", self.cb_use_cache)
         return box
+
+    def _update_color_preview(self):
+        """Paint the preview swatch as a left-to-right gradient of the mode's stops."""
+        stops = building_color_swatches(self.building_color.currentData())
+        if not stops:
+            return
+        if len(stops) == 1:
+            stops = stops * 2
+        n = len(stops) - 1
+        parts = ", ".join(f"stop:{i / n:.4f} {hexv}" for i, hexv in enumerate(stops))
+        self.color_preview.setStyleSheet(
+            "QFrame{border:1px solid #d2d9da;border-radius:7px;"
+            f"background:qlineargradient(x1:0,y1:0,x2:1,y2:0,{parts});}}"
+        )
 
     # ── state ──────────────────────────────────────────────────────────────
     def _emit_run(self):
@@ -339,6 +363,7 @@ class PluginDialog(QDialog):
             pass
         self.cb_extrude.setEnabled(self.cb_buildings.isChecked())
         self.height_scale.setEnabled(self.cb_extrude.isChecked())
+        self._update_color_preview()
 
     def _save(self, p):
         s = QgsSettings()

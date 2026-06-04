@@ -3,7 +3,7 @@ name=OSM Quick 3D
 qgisMinimumVersion=3.28
 qgisMaximumVersion=3.99
 description=One-click OpenStreetMap into native QGIS: function-styled layers plus flat-roof 3D building massing on a selectable study-area shape (rectangle, rounded rectangle, circle or hexagon) over a recessed ground base, built for larger areas.
-version=0.8.1
+version=0.8.2
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -23,6 +23,8 @@ hasProcessingProvider=no
 license=MIT
 
 changelog=
+    OSM Quick 3D 0.8.2
+        - The dialog shows a live gradient preview swatch under the building-colour selector, updating as you change the mode, so you see the look before running.
     OSM Quick 3D 0.8.1
         - Three more soft building-colour tints: Soft salmon, Soft purple and Soft sand, alongside gray, warm and teal (and By function / By height).
     OSM Quick 3D 0.8.0
