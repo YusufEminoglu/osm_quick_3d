@@ -3,11 +3,11 @@ name=OSM Quick 3D
 qgisMinimumVersion=3.28
 qgisMaximumVersion=3.99
 description=One-click OpenStreetMap into native QGIS: function-styled layers plus flat-roof 3D building massing and a basemap underlay, built for larger areas.
-version=0.5.0
+version=0.6.0
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
-about=OSM Quick 3D is a fast, native companion to the browser-based 3D OSM Model plugin. Pick the visible map area (or the extent of your selected features), and the plugin downloads OpenStreetMap buildings, roads, cycleways, waterways, greens, trees and street furniture straight into QGIS as memory layers, already styled by function: buildings coloured by OSM use, roads by highway class and width, water blue, greens green. The buildings are then extruded with QGIS's own 3D symbology into a clean flat-roof massing model whose height comes from OSM (tagged height, else floor count, else a sensible default), so it shows directly in a QGIS 3D Map View with no browser and no web server. The 3D massing is coloured by OSM function in the same palette as the 2D legend, an optional height-exaggeration factor makes low-rise districts read in the 3D view, and trees get a matching 3D pass as simple green canopies. Every downloaded layer lands inside one tidy layer-tree group, an optional basemap layer is moved under the city to act as the ground, and the whole result can optionally be saved to a single GeoPackage so it survives a project reload instead of vanishing as a memory layer. Overpass responses are cached on disk for a week, so re-running on the same area opens instantly without hitting the rate-limited public API again. Because the output is plain native layers, it scales to far larger areas than a web 3D scene; the practical limit is the public Overpass API. Built at Dokuz Eylul University, Department of City and Regional Planning.
+about=OSM Quick 3D is a fast, native companion to the browser-based 3D OSM Model plugin. Pick the visible map area (or the extent of your selected features), and the plugin downloads OpenStreetMap buildings, roads, cycleways, waterways, greens, trees and street furniture straight into QGIS as memory layers, already styled by function: buildings coloured by OSM use, roads by highway class and width, water blue, greens green. The buildings are then extruded with QGIS's own 3D symbology into a clean flat-roof massing model whose height comes from OSM (tagged height, else floor count, else a sensible default), so it shows directly in a QGIS 3D Map View with no browser and no web server. The 3D massing is coloured by OSM function in the same palette as the 2D legend, an optional height-exaggeration factor makes low-rise districts read in the 3D view, and trees get a matching 3D pass as simple green canopies. Every downloaded layer lands inside one tidy layer-tree group, an optional basemap layer is moved under the city to act as the ground, and the whole result can optionally be saved to a single GeoPackage so it survives a project reload instead of vanishing as a memory layer. Each building also carries a computed footprint area and an estimated gross floor area (footprint times floors) as real columns, and the run reports the area totals, so the output is ready for quick planning quantities. Overpass responses are cached on disk for a week, so re-running on the same area opens instantly without hitting the rate-limited public API again. Because the output is plain native layers, it scales to far larger areas than a web 3D scene; the practical limit is the public Overpass API. Built at Dokuz Eylul University, Department of City and Regional Planning.
 
 tracker=https://github.com/YusufEminoglu/osm_quick_3d/issues
 repository=https://github.com/YusufEminoglu/osm_quick_3d
@@ -23,6 +23,9 @@ hasProcessingProvider=no
 license=MIT
 
 changelog=
+    OSM Quick 3D 0.6.0
+        - Buildings carry a computed footprint_m2 (polygon area in the metric CRS) and an estimated gfa_m2 (footprint x floors) column, in both the memory and GeoPackage outputs, ready to label/sum/analyse.
+        - The run summary reports the total building footprint and estimated gross floor area.
     OSM Quick 3D 0.5.0
         - Tree points get a matching 3D pass (green sphere canopies on the terrain) whenever 3D extrusion is on; degrades to 2D markers where no 3D point symbol is available.
         - README refreshed for the function-coloured massing, height exaggeration, layer group, GeoPackage save and Overpass cache.

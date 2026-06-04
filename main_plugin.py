@@ -156,6 +156,27 @@ class OsmQuick3DPlugin:
             return None, "reload failed"
         return loaded, None
 
+    @staticmethod
+    def _building_totals(layer):
+        """(footprint_m2, gfa_m2) summed over a buildings layer, or None on failure."""
+        if layer is None:
+            return None
+        try:
+            fields = layer.fields()
+            if fields.indexFromName("footprint_m2") < 0:
+                return None
+            footprint = gfa = 0.0
+            for feat in layer.getFeatures():
+                fp = feat["footprint_m2"]
+                gf = feat["gfa_m2"]
+                if fp is not None:
+                    footprint += float(fp)
+                if gf is not None:
+                    gfa += float(gf)
+            return footprint, gfa
+        except Exception:
+            return None
+
     def _make_group(self, epsg):
         """A fresh layer-tree group at the top, to keep the legend tidy on big areas."""
         try:
@@ -292,6 +313,13 @@ class OsmQuick3DPlugin:
         opened_3d = native3d.open_3d_view(self.iface) if p["open_3d"] else False
 
         summary = f"{total} obje eklendi: " + ", ".join(added) + f" (EPSG:{epsg})."
+        totals = self._building_totals(buildings_layer)
+        if totals is not None and totals[0] > 0:
+            footprint, gfa = totals
+            summary += (
+                f" Bina taban alanı ≈ {footprint:,.0f} m², "
+                f"tahmini brüt kat alanı ≈ {gfa:,.0f} m²."
+            )
         if gpkg_path is not None and not gpkg_failed:
             summary += f" GeoPackage: {gpkg_path}"
         self.iface.messageBar().pushSuccess("OSM Quick 3D", summary)

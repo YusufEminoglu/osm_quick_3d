@@ -40,7 +40,7 @@ OVERPASS_ENDPOINTS = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
-USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.5.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
+USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.6.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
 DEFAULT_TIMEOUT_S = 60
 
 # Disk cache for Overpass responses. The public API is frequently rate-limited
@@ -370,10 +370,15 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
 
     # Columns mirror raw OSM tags (no PlanX schema): the viewer maps building_levels
     # -> floors, building -> colour, highway -> hierarchy, etc. via the manifest.
+    # footprint_m2 (polygon area in the metric UTM CRS) and gfa_m2 (estimated gross
+    # floor area = footprint x floors) are computed here so both the memory and the
+    # GeoPackage outputs carry them, ready to label, sum or analyse in QGIS.
     buildings_layer, b_pr = _make_layer(
         "OSM Buildings", "Polygon", epsg_dest,
         [("osm_id", QVariant.String), ("building", QVariant.String),
-         ("building_levels", QVariant.Int), ("height", QVariant.Double), ("name", QVariant.String)],
+         ("building_levels", QVariant.Int), ("height", QVariant.Double),
+         ("footprint_m2", QVariant.Double), ("gfa_m2", QVariant.Double),
+         ("name", QVariant.String)],
     )
     roads_layer, r_pr = _make_layer(
         "OSM Roads", "LineString", epsg_dest,
@@ -504,13 +509,21 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
                 counts["skipped"] += 1
                 continue
             height_val = _parse_osm_number(tags.get("height"))
+            levels = _building_levels(tags)
+            try:
+                footprint = round(clipped.area(), 1)
+            except Exception:
+                footprint = None
+            gfa = round(footprint * levels, 1) if footprint else None
             feat = QgsFeature()
             feat.setGeometry(clipped)
             feat.setAttributes([
                 str(element.get("id", "")),
                 _tag(tags, "building"),
-                _building_levels(tags),
+                levels,
                 round(height_val, 1) if height_val else None,
+                footprint,
+                gfa,
                 tags.get("name", ""),
             ])
             b_pr.addFeatures([feat])

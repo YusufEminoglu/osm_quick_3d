@@ -3,6 +3,11 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.6.0] - 2026-06-04
+
+- Buildings now carry a computed `footprint_m2` (polygon area in the metric CRS) and an estimated `gfa_m2` (footprint × floors) column — present in both the memory and GeoPackage outputs — so the result is ready to label, sum or analyse for quick planning quantities.
+- The run summary now reports the total building footprint and estimated gross floor area.
+
 ## [0.5.0] - 2026-06-04
 
 - Tree points now get a matching 3D pass — simple green sphere canopies resting on the terrain — whenever 3D extrusion is on, so the 3D scene gains greenery instead of bare ground. Degrades to the 2D tree markers on builds without a usable 3D point symbol.
