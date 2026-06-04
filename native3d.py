@@ -151,6 +151,67 @@ def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color
         return False
 
 
+def apply_base_slab(layer, depth=5.0, top_z=0.0, color_hex="#5e7274"):
+    """Extrude the ground base as a recessed slab: top at ``top_z``, ``depth`` deep.
+
+    The slab's top face sits at ``top_z`` (ground level, 0) and its base reaches
+    ``top_z - depth`` (e.g. -5 m), so the city visibly stands on a plinth. Uses the
+    3D symbol's data-defined Height (base altitude) property where available.
+    Defensive: returns False on builds without a usable 3D module.
+    """
+    try:
+        from qgis._3d import QgsVectorLayer3DRenderer, QgsPolygon3DSymbol
+    except Exception:
+        return False
+
+    symbol = QgsPolygon3DSymbol()
+    try:
+        symbol.setExtrusionHeight(float(depth))
+    except Exception:
+        pass
+
+    # Drop the slab so its top lands at top_z: base height = top_z - depth.
+    try:
+        from qgis.core import QgsProperty
+        ddp = symbol.dataDefinedProperties()
+        height_key = getattr(QgsPolygon3DSymbol, "PropertyHeight", None)
+        if height_key is not None:
+            ddp.setProperty(height_key, QgsProperty.fromValue(float(top_z) - float(depth)))
+        ext_key = getattr(QgsPolygon3DSymbol, "PropertyExtrusionHeight", None)
+        if ext_key is not None:
+            ddp.setProperty(ext_key, QgsProperty.fromValue(float(depth)))
+        symbol.setDataDefinedProperties(ddp)
+    except Exception:
+        pass
+
+    # Absolute altitude so the base height is taken literally (not clamped to 0).
+    for module in ("qgis.core", "qgis._3d"):
+        try:
+            mod = __import__(module, fromlist=["Qgs3DTypes"])
+            symbol.setAltitudeClamping(mod.Qgs3DTypes.AltClampAbsolute)
+            break
+        except Exception:
+            continue
+
+    material = _make_material(color_hex)
+    if material is not None:
+        for setter in ("setMaterialSettings", "setMaterial"):
+            fn = getattr(symbol, setter, None)
+            if fn is None:
+                continue
+            try:
+                fn(material)
+                break
+            except Exception:
+                continue
+
+    try:
+        layer.setRenderer3D(QgsVectorLayer3DRenderer(symbol))
+        return True
+    except Exception:
+        return False
+
+
 def apply_tree_3d(layer, color_hex="#5f9e4c"):
     """Render the tree points as simple 3D canopies (green spheres) on the terrain.
 

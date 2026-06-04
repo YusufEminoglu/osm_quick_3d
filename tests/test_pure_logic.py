@@ -132,10 +132,19 @@ def test_cache_roundtrip():
         pass
 
 
+def test_shape_and_base_constants():
+    print("shape + base constants")
+    check("four area shapes", len(osm.AREA_SHAPES) == 4)
+    check("rectangle in shapes", osm.SHAPE_RECTANGLE in osm.AREA_SHAPES)
+    check("hexagon in shapes", osm.SHAPE_HEXAGON in osm.AREA_SHAPES)
+    check("base depth 5 m", osm.BASE_DEPTH_M == 5.0)
+    check("base buffer 5 m", osm.BASE_BUFFER_M == 5.0)
+
+
 def main():
     for test in (test_parse_osm_number, test_building_levels, test_utm_epsg,
                  test_waterway_width, test_building_color_expression,
-                 test_cache_roundtrip):
+                 test_cache_roundtrip, test_shape_and_base_constants):
         test()
     print()
     if _failures:

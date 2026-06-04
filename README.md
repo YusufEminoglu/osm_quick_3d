@@ -6,7 +6,7 @@ OSM Quick 3D is the native sibling of [`osm_3d_model`](https://github.com/YusufE
 
 ## What it does
 
-1. Pick the **visible map area** (or the extent of your **selected features**).
+1. Pick the **visible map area** (or the extent of your **selected features**) and a **study-area shape** — rectangle, rounded rectangle, circle or hexagon. Features are clipped to that shape.
 2. It downloads OSM via Overpass — buildings, roads, cycleways, water, greens, trees, street furniture.
 3. The layers are added to your project — inside one tidy **layer-tree group** — as native layers **already styled by function**:
    - buildings by OSM use (residential / commercial / industrial / civic / worship)
@@ -15,8 +15,9 @@ OSM Quick 3D is the native sibling of [`osm_3d_model`](https://github.com/YusufE
 4. Buildings are **extruded** with native QGIS 3D symbology — a clean **flat-roof massing** model. Height comes from OSM: `coalesce("height", "building_levels" * 3, 9)` m. The massing is **coloured by OSM function** in the same palette as the 2D legend, and a **height-exaggeration** factor (0.5×–5.0×) makes low-rise districts read. No roofs, no animation.
 5. Trees get a matching **3D pass** — simple green canopies on the ground — when 3D is on.
    - Each building also carries a computed **`footprint_m2`** and an estimated **`gfa_m2`** (footprint × floors) column, and the run reports the area totals — ready for quick planning quantities.
-6. An optional **basemap** layer is moved underneath to be the ground (in 2D and draped under the 3D terrain).
-7. Optionally opens a **3D Map View** for you.
+6. An optional **ground base** — the study area buffered outward by 5 m, extruded as a recessed plinth from −5 m up to ground level — gives the city something to stand on in 3D.
+7. An optional **basemap** layer is moved underneath to be the ground (in 2D and draped under the 3D terrain).
+8. Optionally opens a **3D Map View** for you.
 
 ## Persistence & caching
 

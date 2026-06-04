@@ -162,6 +162,12 @@ def style_trees(layer):
     layer.triggerRepaint()
 
 
+def style_base(layer):
+    layer.setRenderer(QgsSingleSymbolRenderer(
+        _fill("#dfe3df", outline="#b9bfb6", outline_w=0.2)))
+    layer.triggerRepaint()
+
+
 def style_points(layer, color_hex="#b9897a", size=1.8):
     layer.setRenderer(QgsSingleSymbolRenderer(_marker(color_hex, size)))
     layer.triggerRepaint()

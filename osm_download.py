@@ -40,7 +40,7 @@ OVERPASS_ENDPOINTS = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
-USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.6.1 (https://github.com/YusufEminoglu/osm_quick_3d)"
+USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.7.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
 DEFAULT_TIMEOUT_S = 60
 
 # Disk cache for Overpass responses. The public API is frequently rate-limited
@@ -96,6 +96,71 @@ def utm_epsg_for(lon: float, lat: float) -> int:
     zone = int(math.floor((lon + 180.0) / 6.0) + 1)
     zone = max(1, min(60, zone))
     return (32600 if lat >= 0 else 32700) + zone
+
+
+# Ground-base geometry, in metres. The base is the study area buffered outward by
+# BASE_BUFFER_M and rendered as a slab whose top sits at ground level (0) and whose
+# bottom is BASE_DEPTH_M below it, i.e. a recessed plinth the city stands on.
+BASE_BUFFER_M = 5.0
+BASE_DEPTH_M = 5.0
+
+# Accepted study-area shapes (dialog values).
+SHAPE_RECTANGLE = "rectangle"
+SHAPE_ROUNDED = "rounded"
+SHAPE_CIRCLE = "circle"
+SHAPE_HEXAGON = "hexagon"
+AREA_SHAPES = (SHAPE_RECTANGLE, SHAPE_ROUNDED, SHAPE_CIRCLE, SHAPE_HEXAGON)
+
+
+def shape_study_area(rect: QgsRectangle, shape: str) -> QgsGeometry:
+    """Build the study-area polygon for ``shape`` inscribed in ``rect`` (metric CRS).
+
+    ``rectangle`` is the raw extent; ``rounded`` rounds its corners; ``circle`` and
+    ``hexagon`` are inscribed in the shorter side so they stay within the extent.
+    Everything downstream clips OSM features to this polygon, so the chosen shape
+    is what actually gets exported.
+    """
+    shape = (shape or SHAPE_RECTANGLE).lower()
+    cx = (rect.xMinimum() + rect.xMaximum()) / 2.0
+    cy = (rect.yMinimum() + rect.yMaximum()) / 2.0
+    radius = min(rect.width(), rect.height()) / 2.0
+
+    if shape == SHAPE_CIRCLE and radius > 0:
+        return QgsGeometry.fromPointXY(QgsPointXY(cx, cy)).buffer(radius, 64)
+
+    if shape == SHAPE_HEXAGON and radius > 0:
+        points = []
+        for i in range(6):
+            angle = math.radians(60 * i - 30)  # pointy-top hexagon
+            points.append(QgsPointXY(cx + radius * math.cos(angle),
+                                     cy + radius * math.sin(angle)))
+        points.append(points[0])
+        return QgsGeometry.fromPolygonXY([points])
+
+    if shape == SHAPE_ROUNDED:
+        corner = min(rect.width(), rect.height()) * 0.18
+        rounded = QgsGeometry.fromRect(rect)
+        if corner > 0:
+            # Erode then dilate by the same radius to round the corners.
+            shrunk = rounded.buffer(-corner, 12)
+            if not shrunk.isEmpty():
+                grown = shrunk.buffer(corner, 12)
+                if not grown.isEmpty():
+                    return grown
+        return rounded
+
+    return QgsGeometry.fromRect(rect)
+
+
+def base_geometry(area_utm: QgsGeometry, buffer_m: float = BASE_BUFFER_M) -> QgsGeometry:
+    """The study area buffered outward by ``buffer_m`` — the ground-base footprint."""
+    try:
+        buffered = area_utm.buffer(buffer_m, 16)
+        if buffered is not None and not buffered.isEmpty():
+            return buffered
+    except Exception:
+        pass
+    return QgsGeometry(area_utm)
 
 
 # --------------------------------------------------------------------------
@@ -298,6 +363,20 @@ def _make_layer(name: str, wkb_type: str, epsg_dest: int, fields_def):
     provider.addAttributes([QgsField(field_name, qvariant) for field_name, qvariant in fields_def])
     layer.updateFields()
     return layer, provider
+
+
+def build_base_layer(area_utm: QgsGeometry, epsg_dest: int,
+                     buffer_m: float = BASE_BUFFER_M) -> QgsVectorLayer:
+    """A one-feature ground-base layer (study area buffered by ``buffer_m``)."""
+    layer, provider = _make_layer(
+        "OSM Base", "MultiPolygon", epsg_dest, [("kind", QVariant.String)]
+    )
+    feat = QgsFeature()
+    feat.setGeometry(base_geometry(area_utm, buffer_m))
+    feat.setAttributes(["base"])
+    provider.addFeatures([feat])
+    layer.updateExtents()
+    return layer
 
 
 def save_layer_to_geojson(layer: QgsVectorLayer, path) -> None:

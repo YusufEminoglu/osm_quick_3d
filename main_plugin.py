@@ -2,8 +2,9 @@
 """OSM Quick 3D — main plugin class.
 
 One toolbar button opens a dialog; on run it downloads OpenStreetMap for the
-chosen area, adds the layers to QGIS already styled by function, extrudes the
-buildings with native 3D symbology, and (optionally) opens a 3D Map View. No
+chosen study area (rectangle, rounded rectangle, circle or hexagon), adds the
+layers to QGIS already styled by function, extrudes the buildings with native 3D
+symbology over a recessed ground base, and (optionally) opens a 3D Map View. No
 web server, no browser — built to scale to larger areas than the Three.js
 companion plugin (osm_3d_model).
 """
@@ -17,7 +18,6 @@ from qgis.PyQt.QtWidgets import QAction, QApplication, QFileDialog, QMessageBox
 from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
-    QgsGeometry,
     QgsProject,
     QgsRectangle,
     QgsVectorLayer,
@@ -25,8 +25,11 @@ from qgis.core import (
 
 from . import native3d, styling
 from .osm_download import (
+    BASE_DEPTH_M,
     OsmDownloadError,
+    build_base_layer,
     download_osm_for_area,
+    shape_study_area,
     utm_epsg_for,
     write_layer_to_gpkg,
 )
@@ -44,7 +47,7 @@ class OsmQuick3DPlugin:
 
     def initGui(self):
         self.action = QAction(QIcon(self.icon_path), "OSM Quick 3D", self.iface.mainWindow())
-        self.action.setStatusTip("OpenStreetMap'i indir, QGIS'te native 3D olarak aç")
+        self.action.setStatusTip("Download OpenStreetMap and open it as native 3D in QGIS")
         self.action.triggered.connect(self.show_dialog)
         self.iface.addToolBarIcon(self.action)
         self.iface.addPluginToMenu(self.MENU_NAME, self.action)
@@ -82,14 +85,18 @@ class OsmQuick3DPlugin:
             if (layer is None or not hasattr(layer, "selectedFeatureCount")
                     or layer.selectedFeatureCount() == 0):
                 raise ValueError(
-                    "Seçili obje yok. Aktif vektör katmanda obje seçin "
-                    "ya da 'Görünür harita alanı'nı kullanın."
+                    "No features selected. Select features in the active vector "
+                    "layer, or use 'Visible map extent'."
                 )
             return layer.boundingBoxOfSelected(), layer.crs()
         return canvas.extent(), canvas.mapSettings().destinationCrs()
 
     def _area_utm(self, rect, src_crs, max_km2):
-        """Reproject the area rectangle to its UTM zone, clamped to max_km2."""
+        """Reproject the area rectangle to its UTM zone, clamped to max_km2.
+
+        Returns (QgsRectangle in UTM, EPSG, area_km2). The study-area shape is
+        applied to this rectangle by the caller.
+        """
         project = QgsProject.instance()
         wgs = QgsCoordinateReferenceSystem.fromEpsgId(4326)
         wgs_rect = QgsCoordinateTransform(src_crs, wgs, project).transformBoundingBox(rect)
@@ -108,7 +115,7 @@ class OsmQuick3DPlugin:
                 c.x() + w * f / 2.0, c.y() + h * f / 2.0,
             )
             area_km2 = max_km2
-        return QgsGeometry.fromRect(urect), epsg, area_km2
+        return urect, epsg, area_km2
 
     def _layer_specs(self, p):
         """(result key, wanted?, style function) in bottom-to-top draw order."""
@@ -132,7 +139,7 @@ class OsmQuick3DPlugin:
         """Prompt for a GeoPackage save path; return it or None if cancelled."""
         path, _ = QFileDialog.getSaveFileName(
             self.iface.mainWindow(),
-            "OSM Quick 3D — GeoPackage olarak kaydet",
+            "OSM Quick 3D — Save as GeoPackage",
             "osm_quick_3d.gpkg",
             "GeoPackage (*.gpkg)",
         )
@@ -197,24 +204,56 @@ class OsmQuick3DPlugin:
         except Exception:
             pass
 
+    def _add_base_layer(self, p, area_utm, epsg, group, gpkg_path, gpkg_first):
+        """Build, persist (optionally), style and 3D-extrude the ground base.
+
+        The base goes to the bottom of the group so it underlies the city in 2D,
+        and is extruded as a recessed slab in 3D. Returns (added?, gpkg_failed?).
+        """
+        try:
+            base = build_base_layer(area_utm, epsg)
+        except Exception:
+            return False, False
+        gpkg_failed = False
+        if gpkg_path is not None:
+            loaded, err = self._persist_to_gpkg(base, "base", gpkg_path, gpkg_first)
+            if loaded is not None:
+                base = loaded
+            else:
+                gpkg_failed = True
+        try:
+            styling.style_base(base)
+        except Exception:
+            pass
+        project = QgsProject.instance()
+        if group is not None:
+            project.addMapLayer(base, False)
+            group.addLayer(base)  # appended last == bottom of the group
+        else:
+            project.addMapLayer(base)
+        if p.get("extrude_3d"):
+            native3d.apply_base_slab(base, depth=BASE_DEPTH_M)
+        return True, gpkg_failed
+
     # ── main run ───────────────────────────────────────────────────────────
     def run_action(self, p):
         if not any(p[k] for k in ("want_buildings", "want_roads", "want_water",
                                   "want_greens", "want_trees", "want_furniture")):
-            self._error("Katman seçilmedi", "En az bir katman türü seçin.")
+            self._error("No layers selected", "Select at least one layer type.")
             return
 
         try:
             rect, src_crs = self._area_rect_and_crs(p["area_source"])
             if rect.isEmpty():
-                raise ValueError("Alan boş. Haritada bir yere yakınlaşın ya da obje seçin.")
-            area_utm, epsg, area_km2 = self._area_utm(rect, src_crs, p["max_km2"])
+                raise ValueError("Empty area. Zoom to a place on the map or select features.")
+            urect, epsg, area_km2 = self._area_utm(rect, src_crs, p["max_km2"])
+            area_utm = shape_study_area(urect, p.get("shape", "rectangle"))
         except ValueError as exc:
-            self._error("Alan hatası", str(exc))
+            self._error("Area error", str(exc))
             self._set_status(str(exc), error=True)
             return
 
-        self._set_status(f"İndiriliyor… (~{area_km2:.1f} km², EPSG:{epsg})")
+        self._set_status(f"Downloading… (~{area_km2:.1f} km², EPSG:{epsg})")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             result = download_osm_for_area(
@@ -222,11 +261,11 @@ class OsmQuick3DPlugin:
                 use_cache=p.get("use_cache", True),
             )
         except OsmDownloadError as exc:
-            self._error("OSM indirme hatası", str(exc))
+            self._error("OSM download error", str(exc))
             self._set_status(str(exc), error=True)
             return
         except Exception as exc:
-            self._error("Beklenmeyen hata", str(exc))
+            self._error("Unexpected error", str(exc))
             self._set_status(str(exc), error=True)
             return
         finally:
@@ -236,7 +275,7 @@ class OsmQuick3DPlugin:
         if p.get("save_gpkg"):
             gpkg_path = self._ask_gpkg_path()
             if gpkg_path is None:
-                self._set_status("GeoPackage kaydı iptal edildi; bellek katmanları kullanılıyor.")
+                self._set_status("GeoPackage save cancelled; using memory layers.")
 
         project = QgsProject.instance()
         group = self._make_group(epsg)
@@ -276,8 +315,8 @@ class OsmQuick3DPlugin:
                 trees_layer = layer
 
         if not added:
-            self._error("Sonuç yok", "Bu alanda seçilen katmanlarda OSM objesi bulunamadı.")
-            self._set_status("0 obje.", error=True)
+            self._error("No result", "No OSM features found in the selected layers for this area.")
+            self._set_status("0 features.", error=True)
             if group is not None:
                 try:
                     QgsProject.instance().layerTreeRoot().removeChildNode(group)
@@ -296,6 +335,12 @@ class OsmQuick3DPlugin:
         if p["extrude_3d"] and trees_layer is not None:
             native3d.apply_tree_3d(trees_layer)
 
+        # Ground base: a recessed slab the city stands on, under everything.
+        if p.get("want_base"):
+            _, base_gpkg_failed = self._add_base_layer(
+                p, area_utm, epsg, group, gpkg_path, gpkg_first)
+            gpkg_failed = gpkg_failed or base_gpkg_failed
+
         if p["basemap"] is not None:
             self._move_basemap_bottom(p["basemap"])
 
@@ -312,13 +357,13 @@ class OsmQuick3DPlugin:
 
         opened_3d = native3d.open_3d_view(self.iface) if p["open_3d"] else False
 
-        summary = f"{total} obje eklendi: " + ", ".join(added) + f" (EPSG:{epsg})."
+        summary = f"{total} features added: " + ", ".join(added) + f" (EPSG:{epsg})."
         totals = self._building_totals(buildings_layer)
         if totals is not None and totals[0] > 0:
             footprint, gfa = totals
             summary += (
-                f" Bina taban alanı ≈ {footprint:,.0f} m², "
-                f"tahmini brüt kat alanı ≈ {gfa:,.0f} m²."
+                f" Building footprint ≈ {footprint:,.0f} m², "
+                f"estimated gross floor area ≈ {gfa:,.0f} m²."
             )
         if gpkg_path is not None and not gpkg_failed:
             summary += f" GeoPackage: {gpkg_path}"
@@ -327,19 +372,19 @@ class OsmQuick3DPlugin:
         if gpkg_path is not None and gpkg_failed:
             self.iface.messageBar().pushWarning(
                 "OSM Quick 3D",
-                "Bazı katmanlar GeoPackage'a yazılamadı; o katmanlar bellek katmanı olarak "
-                "eklendi (proje kapanınca kaybolur).",
+                "Some layers could not be written to the GeoPackage; those were added "
+                "as memory layers (lost when the project closes).",
             )
         if p["extrude_3d"] and not extruded:
             self.iface.messageBar().pushInfo(
                 "OSM Quick 3D",
-                "Bu QGIS derlemesinde 3D modülü bulunamadı; katmanlar 2D olarak eklendi.",
+                "No 3D module in this QGIS build; layers were added in 2D.",
             )
         if p["open_3d"] and not opened_3d:
             self.iface.messageBar().pushInfo(
                 "OSM Quick 3D",
-                "3D görünümü otomatik açılamadı — Görünüm ▸ Yeni 3D Harita Görünümü'nü "
-                "açın (binalar zaten ekstrüde).",
+                "Could not open a 3D view automatically — open View ▸ New 3D Map View "
+                "(the buildings are already extruded).",
             )
 
     def _error(self, title, text):

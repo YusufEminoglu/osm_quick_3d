@@ -3,7 +3,13 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
-## [0.6.1] - 2026-06-04
+## [0.7.0] - 2026-06-04
+
+- **Selectable study-area shape**: rectangle (map extent), rounded rectangle, circle or hexagon. OSM features are clipped to the chosen shape, so it is what gets exported. Circle and hexagon are inscribed in the shorter side of the extent.
+- **Ground base**: an optional recessed slab the city stands on — the study area buffered outward by 5 m, extruded in 3D as a plinth from −5 m up to ground level (added at the bottom of the group, styled as a subtle 2D ground fill).
+- **Fully English UI**: every dialog, status, error and message-bar string is now English.
+- **Redesigned dialog**: a header with the plugin icon and grouped sections (Study area · Layers · 3D & base · Output & data) instead of the old flat form.
+- **New plugin icon**: an isometric city on a hexagonal boundary with a ground plinth, in the plugin's function palette.
 
 - Fix: building/green/road/water/bike layers are now created as Multi* (MultiPolygon / MultiLineString), so a feature that boundary-clipping splits into several parts is no longer silently dropped — matters most on larger areas where clipping is common. Adds a headless `tests/test_pure_logic.py` harness (25 checks) covering the pure-Python parsing, floor-count, UTM, waterway-width, colour-expression and cache logic.
 
