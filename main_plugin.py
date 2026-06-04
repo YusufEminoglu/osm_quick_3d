@@ -219,7 +219,7 @@ class OsmQuick3DPlugin:
 
         project = QgsProject.instance()
         group = self._make_group(epsg)
-        added, total, buildings_layer = [], 0, None
+        added, total, buildings_layer, trees_layer = [], 0, None, None
         gpkg_first, gpkg_failed = True, False
         for key, wanted, style_fn in self._layer_specs(p):
             if not wanted:
@@ -251,6 +251,8 @@ class OsmQuick3DPlugin:
             added.append(f"{layer.featureCount()} {key}")
             if key == "buildings":
                 buildings_layer = layer
+            elif key == "trees":
+                trees_layer = layer
 
         if not added:
             self._error("Sonuç yok", "Bu alanda seçilen katmanlarda OSM objesi bulunamadı.")
@@ -269,6 +271,9 @@ class OsmQuick3DPlugin:
                 height_scale=p.get("height_scale", 1.0),
                 color_expr=styling.building_color_expression(),
             )
+        # Tree points get a matching 3D pass (green canopies) when 3D is on.
+        if p["extrude_3d"] and trees_layer is not None:
+            native3d.apply_tree_3d(trees_layer)
 
         if p["basemap"] is not None:
             self._move_basemap_bottom(p["basemap"])

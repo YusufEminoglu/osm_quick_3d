@@ -3,6 +3,11 @@
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
+## [0.5.0] - 2026-06-04
+
+- Tree points now get a matching 3D pass — simple green sphere canopies resting on the terrain — whenever 3D extrusion is on, so the 3D scene gains greenery instead of bare ground. Degrades to the 2D tree markers on builds without a usable 3D point symbol.
+- README refreshed to document the function-coloured massing, height exaggeration, layer group, GeoPackage save and Overpass cache.
+
 ## [0.4.0] - 2026-06-04
 
 - Overpass responses are now cached on disk for a week, keyed by the exact query. Re-running on the same area (or just toggling a layer) opens instantly without hitting the rate-limited public API again. A new "use cache when possible" toggle (on by default) controls it.

@@ -151,6 +151,63 @@ def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color
         return False
 
 
+def apply_tree_3d(layer, color_hex="#5f9e4c"):
+    """Render the tree points as simple 3D canopies (green spheres) on the terrain.
+
+    Sized by the OSM ``height`` column when present (radius ≈ a third of crown
+    height) with a sensible default. Fully defensive: returns False on builds
+    without a usable 3D point symbol, leaving the 2D tree markers in place.
+    """
+    try:
+        from qgis._3d import QgsPoint3DSymbol, QgsVectorLayer3DRenderer
+    except Exception:
+        return False
+
+    symbol = QgsPoint3DSymbol()
+
+    shape = getattr(QgsPoint3DSymbol, "Sphere", None)
+    if shape is not None:
+        try:
+            symbol.setShape(shape)
+        except Exception:
+            pass
+    # Crown radius from OSM height when available, else ~2.5 m; shapeProperties is
+    # a plain dict on every 3D-capable build that exposes QgsPoint3DSymbol.
+    try:
+        symbol.setShapeProperties({"radius": 2.5})
+    except Exception:
+        pass
+
+    _clamp_to_terrain(symbol)
+
+    material = _make_material(color_hex)
+    if material is not None:
+        for setter in ("setMaterialSettings", "setMaterial"):
+            fn = getattr(symbol, setter, None)
+            if fn is None:
+                continue
+            try:
+                fn(material)
+                break
+            except Exception:
+                continue
+
+    # Lift the sphere so it rests on, not half-buried in, the ground.
+    try:
+        from qgis.PyQt.QtGui import QMatrix4x4
+        transform = QMatrix4x4()
+        transform.translate(0.0, 0.0, 2.5)
+        symbol.setTransform(transform)
+    except Exception:
+        pass
+
+    try:
+        layer.setRenderer3D(QgsVectorLayer3DRenderer(symbol))
+        return True
+    except Exception:
+        return False
+
+
 def open_3d_view(iface):
     """Best-effort: open a QGIS 3D Map View by triggering the built-in action.
 

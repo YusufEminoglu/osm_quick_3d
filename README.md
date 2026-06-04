@@ -8,13 +8,19 @@ OSM Quick 3D is the native sibling of [`osm_3d_model`](https://github.com/YusufE
 
 1. Pick the **visible map area** (or the extent of your **selected features**).
 2. It downloads OSM via Overpass — buildings, roads, cycleways, water, greens, trees, street furniture.
-3. The layers are added to your project as **native memory layers, already styled by function**:
+3. The layers are added to your project — inside one tidy **layer-tree group** — as native layers **already styled by function**:
    - buildings by OSM use (residential / commercial / industrial / civic / worship)
    - roads by `highway` class — colour **and** width
    - water blue, greens green
-4. Buildings are **extruded** with native QGIS 3D symbology — a clean **flat-roof massing** model. Height comes from OSM: `coalesce("height", "building_levels" * 3, 9)` m. No roofs, no animation.
-5. An optional **basemap** layer is moved underneath to be the ground (in 2D and draped under the 3D terrain).
-6. Optionally opens a **3D Map View** for you.
+4. Buildings are **extruded** with native QGIS 3D symbology — a clean **flat-roof massing** model. Height comes from OSM: `coalesce("height", "building_levels" * 3, 9)` m. The massing is **coloured by OSM function** in the same palette as the 2D legend, and a **height-exaggeration** factor (0.5×–5.0×) makes low-rise districts read. No roofs, no animation.
+5. Trees get a matching **3D pass** — simple green canopies on the ground — when 3D is on.
+6. An optional **basemap** layer is moved underneath to be the ground (in 2D and draped under the 3D terrain).
+7. Optionally opens a **3D Map View** for you.
+
+## Persistence & caching
+
+- **Save to GeoPackage** (optional): every downloaded layer is written into one `.gpkg` and reloaded from it, so the result survives a project reload instead of vanishing as a memory layer.
+- **Overpass disk cache** (on by default): responses are cached for a week, keyed by the exact query, so re-running on the same area opens instantly without hitting the rate-limited public API again.
 
 ## Install (development)
 
