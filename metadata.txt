@@ -1,0 +1,31 @@
+[general]
+name=OSM Quick 3D
+qgisMinimumVersion=3.28
+qgisMaximumVersion=3.99
+description=One-click OpenStreetMap into native QGIS: function-styled layers plus flat-roof 3D building massing and a basemap underlay, built for larger areas.
+version=0.1.0
+author=Yusuf Eminoglu
+email=yusuf.eminoglu@deu.edu.tr
+
+about=OSM Quick 3D is a fast, native companion to the browser-based 3D OSM Model plugin. Pick the visible map area (or the extent of your selected features), and the plugin downloads OpenStreetMap buildings, roads, cycleways, waterways, greens, trees and street furniture straight into QGIS as memory layers, already styled by function: buildings coloured by OSM use, roads by highway class and width, water blue, greens green. The buildings are then extruded with QGIS's own 3D symbology into a clean flat-roof massing model whose height comes from OSM (tagged height, else floor count, else a sensible default), so it shows directly in a QGIS 3D Map View with no browser and no web server. An optional basemap layer is moved under the city to act as the ground. Because the output is plain native layers, it scales to far larger areas than a web 3D scene; the practical limit is the public Overpass API. Built at Dokuz Eylul University, Department of City and Regional Planning.
+
+tracker=https://github.com/YusufEminoglu/osm_quick_3d/issues
+repository=https://github.com/YusufEminoglu/osm_quick_3d
+homepage=https://github.com/YusufEminoglu/osm_quick_3d
+
+category=Vector
+tags=osm,openstreetmap,3d,massing,extrusion,overpass,urban planning,vector,qgis
+icon=icons/icon.png
+
+experimental=False
+deprecated=False
+hasProcessingProvider=no
+license=MIT
+
+changelog=
+    OSM Quick 3D 0.1.0 - Initial release.
+        - One-click OpenStreetMap download for the visible map area or the extent of selected features.
+        - Layers arrive as native QGIS memory layers, styled by function: buildings by OSM use, roads by highway class and width, water blue, greens green.
+        - Buildings are extruded into a flat-roof 3D massing model using native QGIS 3D symbology; height is read from OSM (height, then floor count, then a default).
+        - Optional basemap layer is moved underneath to act as the ground in 2D and in the 3D Map View.
+        - Built for larger areas than a web 3D scene; the practical limit is the public Overpass API.

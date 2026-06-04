@@ -1,0 +1,156 @@
+# -*- coding: utf-8 -*-
+"""Functional 2D styling for the downloaded OSM layers.
+
+Every layer lands already categorized the way a planner reads a city, mirroring
+the web viewer's semantic colours but as native QGIS renderers: buildings by OSM
+function, roads by ``highway`` class (colour and width), water blue, greens
+green. This is the "like qgis2threejs but more functional" colouring — ready-made
+function categories instead of a flat single symbol.
+"""
+from __future__ import annotations
+
+from qgis.core import (
+    QgsCategorizedSymbolRenderer,
+    QgsFillSymbol,
+    QgsLineSymbol,
+    QgsMarkerSymbol,
+    QgsRendererCategory,
+    QgsSingleSymbolRenderer,
+)
+
+# ── palettes ────────────────────────────────────────────────────────────────
+# Muted European/North-American massing tones, matching the web viewer defaults.
+BUILDING_COLORS = {
+    "residential": "#d8c3b1",
+    "commercial": "#b7c2d0",
+    "industrial": "#c6b9a4",
+    "civic": "#cdd6d2",
+    "worship": "#d8cfe2",
+    "other": "#cac5bf",
+}
+# class -> (colour, width in mm, dashed)
+ROAD_STYLE = {
+    "major": ("#e1846f", 1.3, False),
+    "primary": ("#efb066", 1.1, False),
+    "secondary": ("#f1d784", 0.95, False),
+    "tertiary": ("#f6f0df", 0.8, False),
+    "residential": ("#eae5da", 0.6, False),
+    "service": ("#e4dfd4", 0.4, False),
+    "foot": ("#d2b59a", 0.5, True),
+    "other": ("#e0dbd0", 0.5, False),
+}
+GREEN_COLORS = {
+    "park": "#a9c08a",
+    "forest": "#7f9e6a",
+    "pitch": "#b6cf93",
+    "cemetery": "#9bae8f",
+    "green": "#a7b98f",
+}
+
+# OSM tag values are emitted lower-cased by osm_download; lower() here is a
+# harmless safety net so the categories still match if that ever changes.
+BUILDING_CLASS_EXPR = (
+    "CASE"
+    " WHEN lower(\"building\") IN ('apartments','residential','house','detached',"
+    "'terrace','dormitory','bungalow','semidetached_house','hut') THEN 'residential'"
+    " WHEN lower(\"building\") IN ('commercial','retail','office','supermarket',"
+    "'kiosk','hotel') THEN 'commercial'"
+    " WHEN lower(\"building\") IN ('industrial','warehouse','manufacture','hangar',"
+    "'factory') THEN 'industrial'"
+    " WHEN lower(\"building\") IN ('school','university','college','kindergarten',"
+    "'hospital','clinic','public','civic','government','townhall') THEN 'civic'"
+    " WHEN lower(\"building\") IN ('church','mosque','temple','synagogue',"
+    "'cathedral','chapel') THEN 'worship'"
+    " ELSE 'other' END"
+)
+ROAD_CLASS_EXPR = (
+    "CASE"
+    " WHEN lower(\"highway\") IN ('motorway','trunk','motorway_link','trunk_link') THEN 'major'"
+    " WHEN lower(\"highway\") IN ('primary','primary_link') THEN 'primary'"
+    " WHEN lower(\"highway\") IN ('secondary','secondary_link') THEN 'secondary'"
+    " WHEN lower(\"highway\") IN ('tertiary','tertiary_link') THEN 'tertiary'"
+    " WHEN lower(\"highway\") IN ('residential','unclassified','living_street','road') THEN 'residential'"
+    " WHEN lower(\"highway\") IN ('service','track') THEN 'service'"
+    " WHEN lower(\"highway\") IN ('footway','path','pedestrian','steps','corridor','bridleway') THEN 'foot'"
+    " ELSE 'other' END"
+)
+GREEN_CLASS_EXPR = (
+    "CASE"
+    " WHEN lower(\"leisure\") IN ('park','garden') OR lower(\"landuse\") IN ('grass','recreation_ground','meadow') THEN 'park'"
+    " WHEN lower(\"landuse\") = 'forest' OR lower(\"natural\") IN ('wood','scrub') THEN 'forest'"
+    " WHEN lower(\"leisure\") IN ('pitch','playground') THEN 'pitch'"
+    " WHEN lower(\"landuse\") = 'cemetery' THEN 'cemetery'"
+    " ELSE 'green' END"
+)
+
+
+# ── symbol factories ────────────────────────────────────────────────────────
+def _fill(color_hex, outline="#8d8378", outline_w=0.16):
+    return QgsFillSymbol.createSimple({
+        "color": color_hex,
+        "outline_color": outline,
+        "outline_width": str(outline_w),
+        "style": "solid",
+    })
+
+
+def _line(color_hex, width, dashed=False):
+    props = {"color": color_hex, "width": str(width), "capstyle": "round", "joinstyle": "round"}
+    if dashed:
+        props["line_style"] = "dash"
+    return QgsLineSymbol.createSimple(props)
+
+
+def _marker(color_hex, size=2.0, outline="#5f574d"):
+    return QgsMarkerSymbol.createSimple({
+        "name": "circle", "color": color_hex, "size": str(size),
+        "outline_color": outline, "outline_width": "0.2",
+    })
+
+
+def _labelize(key):
+    return key.replace("_", " ").capitalize()
+
+
+def _categorized(expression, mapping_to_symbol):
+    cats = [QgsRendererCategory(key, sym, _labelize(key)) for key, sym in mapping_to_symbol.items()]
+    return QgsCategorizedSymbolRenderer(expression, cats)
+
+
+# ── per-layer styling ───────────────────────────────────────────────────────
+def style_buildings(layer):
+    mapping = {k: _fill(v) for k, v in BUILDING_COLORS.items()}
+    layer.setRenderer(_categorized(BUILDING_CLASS_EXPR, mapping))
+    layer.triggerRepaint()
+
+
+def style_roads(layer):
+    mapping = {k: _line(c, w, d) for k, (c, w, d) in ROAD_STYLE.items()}
+    layer.setRenderer(_categorized(ROAD_CLASS_EXPR, mapping))
+    layer.triggerRepaint()
+
+
+def style_greens(layer):
+    mapping = {k: _fill(v, outline="#7c8a68", outline_w=0.12) for k, v in GREEN_COLORS.items()}
+    layer.setRenderer(_categorized(GREEN_CLASS_EXPR, mapping))
+    layer.triggerRepaint()
+
+
+def style_water(layer):
+    layer.setRenderer(QgsSingleSymbolRenderer(_line("#6fa8c7", 0.9)))
+    layer.triggerRepaint()
+
+
+def style_bikelanes(layer):
+    layer.setRenderer(QgsSingleSymbolRenderer(_line("#8fbf8f", 0.6, dashed=True)))
+    layer.triggerRepaint()
+
+
+def style_trees(layer):
+    layer.setRenderer(QgsSingleSymbolRenderer(_marker("#6f9e5c", 1.8)))
+    layer.triggerRepaint()
+
+
+def style_points(layer, color_hex="#b9897a", size=1.8):
+    layer.setRenderer(QgsSingleSymbolRenderer(_marker(color_hex, size)))
+    layer.triggerRepaint()
