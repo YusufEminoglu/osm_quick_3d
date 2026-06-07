@@ -82,6 +82,9 @@ class OsmQuick3DPlugin:
         self.dock.refresh_groups()
         self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
         self.dock.show()
+        
+        from qgis.PyQt.QtCore import QTimer
+        QTimer.singleShot(200, self._dock_3d_above_controller)
 
     def show_dialog(self):
         if self.dialog is None:
@@ -218,15 +221,30 @@ class OsmQuick3DPlugin:
         except Exception:
             return None
 
-    def _move_basemap_bottom(self, basemap):
+    def _setup_basemap_masking(self, basemap, group):
+        if basemap is None or group is None:
+            return
+        
+        # 1. Convert the group tree node to a QgsGroupLayer to enable group rendering
         try:
+            from qgis.core import QgsGroupLayer, QgsProject
+            if hasattr(group, "convertToGroupLayer"):
+                options = QgsGroupLayer.LayerOptions(QgsProject.instance().transformContext())
+                group_layer = group.convertToGroupLayer(options)
+                if group_layer:
+                    QgsProject.instance().addMapLayer(group_layer, False)
+        except Exception:
+            pass
+
+        # 2. Move the basemap layer to the bottom of the group tree (below base)
+        try:
+            from qgis.core import QgsProject
             root = QgsProject.instance().layerTreeRoot()
             node = root.findLayer(basemap.id())
-            if node is None:
-                return
-            parent = node.parent() or root
-            root.insertChildNode(-1, node.clone())
-            parent.removeChildNode(node)
+            if node is not None:
+                parent = node.parent() or root
+                parent.removeChildNode(node)
+                group.addChildNode(node)
         except Exception:
             pass
 
@@ -388,7 +406,8 @@ class OsmQuick3DPlugin:
                 height_scale=p.get("height_scale", 1.0),
                 color_expr=styling.building_color_expression(
                     p.get("building_color", styling.BUILDING_COLOR_FUNCTION),
-                    classification=p.get("classification", "continuous")),
+                    classification=p.get("classification", "continuous"),
+                    layer=buildings_layer),
             )
         # Tree points get a matching 3D pass (green canopies) when 3D is on.
         if p["extrude_3d"] and trees_layer is not None:
@@ -402,7 +421,7 @@ class OsmQuick3DPlugin:
             gpkg_failed = gpkg_failed or base_gpkg_failed
 
         if p["basemap"] is not None:
-            self._move_basemap_bottom(p["basemap"])
+            self._setup_basemap_masking(p["basemap"], group)
 
         try:
             canvas = self.iface.mapCanvas()
@@ -475,6 +494,8 @@ class OsmQuick3DPlugin:
                         break
             
             if c3d_dock and self.dock:
+                c3d_dock.setFloating(False)
+                self.dock.setFloating(False)
                 win.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, c3d_dock)
                 win.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
                 win.splitDockWidget(c3d_dock, self.dock, Qt.Vertical)

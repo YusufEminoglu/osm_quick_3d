@@ -125,6 +125,13 @@ def test_building_color_expression():
     check("has ELSE fallback", "ELSE" in expr and styling.BUILDING_COLORS["other"] in expr)
     check("references building class column", '"building"' in expr)
 
+    expr_discrete = styling.building_color_expression("teal", classification="discrete")
+    check("discrete ramp uses CASE", expr_discrete.startswith("CASE"))
+    check("discrete ramp contains WHEN", "WHEN" in expr_discrete)
+
+    expr_cont = styling.building_color_expression("teal", classification="continuous")
+    check("continuous ramp uses color_rgb", expr_cont.startswith("color_rgb("))
+
 
 def test_building_color_modes():
     print("building colour modes (height/tints)")

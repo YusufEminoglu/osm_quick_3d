@@ -298,6 +298,7 @@ class PluginDockWidget(QDockWidget):
         buildings = layers.get("buildings")
         roads = layers.get("roads")
         base = layers.get("base")
+        base_3d = layers.get("base_3d")
 
         color_mode = self.building_color.currentData()
         classification = self.classification.currentData()
@@ -314,7 +315,8 @@ class PluginDockWidget(QDockWidget):
                 buildings,
                 color_hex=styling.building_base_color(color_mode),
                 height_scale=scale,
-                color_expr=styling.building_color_expression(color_mode, classification=classification)
+                color_expr=styling.building_color_expression(
+                    color_mode, classification=classification, layer=buildings)
             )
 
             # Update Labels

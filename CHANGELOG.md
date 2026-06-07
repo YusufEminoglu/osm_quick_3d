@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.15.0] - 2026-06-08
+
+- Fix basemap clipping in 3D Map View, implement dynamic height classification, fix base_3d NameError, and polish dock widget stacking
+
 ## [0.14.0] - 2026-06-08
 
 - Add two-layer basemap clipping, robust height value casting, continuous/discrete/quantile classification controls, and programmatically stack 3D view dock widget above the controller.

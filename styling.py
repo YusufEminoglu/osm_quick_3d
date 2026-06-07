@@ -171,48 +171,90 @@ def _interpolate_color(c1_hex, c2_hex, factor):
     return "#%02x%02x%02x" % (r, g, b)
 
 
-def _ramp_color_expression(lo_hex, hi_hex, classification="continuous"):
-    """A color_rgb() expression interpolating lo->hi by building height, step or quantile."""
-    h = _BUILDING_HEIGHT_EXPR
-    classification = str(classification).lower()
+def get_breaks_and_colors(layer, lo_hex, hi_hex, classification="continuous"):
+    """Calculate dynamic min, max, breaks, and category colors from actual building heights."""
+    min_h = 3.0
+    max_h = 30.0
+    b = [9.0, 15.0, 21.0, 27.0]
+
+    if layer is not None and layer.featureCount() > 0:
+        try:
+            heights = []
+            for feat in layer.getFeatures():
+                h = feat["height"]
+                if h is None or h <= 0:
+                    levels = feat["building_levels"]
+                    if levels is not None and levels > 0:
+                        h = levels * 3.0
+                    else:
+                        h = 9.0
+                else:
+                    h = float(h)
+                heights.append(h)
+            
+            if heights:
+                heights.sort()
+                min_h = heights[0]
+                max_h = heights[-1]
+                if max_h <= min_h:
+                    max_h = min_h + 10.0
+                
+                n = len(heights)
+                classification = str(classification).lower()
+                if classification == "quantile" and n >= 5:
+                    b1 = heights[int(n * 0.2)]
+                    b2 = heights[int(n * 0.4)]
+                    b3 = heights[int(n * 0.6)]
+                    b4 = heights[int(n * 0.8)]
+                    b = [b1, b2, b3, b4]
+                else:
+                    step = (max_h - min_h) / 5.0
+                    b = [min_h + step, min_h + 2 * step, min_h + 3 * step, min_h + 4 * step]
+        except Exception:
+            pass
+
+    c1 = lo_hex
+    c2 = _interpolate_color(lo_hex, hi_hex, 0.25)
+    c3 = _interpolate_color(lo_hex, hi_hex, 0.5)
+    c4 = _interpolate_color(lo_hex, hi_hex, 0.75)
+    c5 = hi_hex
     
-    if classification == "discrete":
-        # Equal Intervals: 3m to 60m divided into 5 steps
-        c1 = lo_hex
-        c2 = _interpolate_color(lo_hex, hi_hex, 0.25)
-        c3 = _interpolate_color(lo_hex, hi_hex, 0.5)
-        c4 = _interpolate_color(lo_hex, hi_hex, 0.75)
-        c5 = hi_hex
-        return (
-            f"CASE "
-            f" WHEN {h} <= 15 THEN '{c1}'"
-            f" WHEN {h} <= 30 THEN '{c2}'"
-            f" WHEN {h} <= 45 THEN '{c3}'"
-            f" WHEN {h} <= 60 THEN '{c4}'"
-            f" ELSE '{c5}' END"
-        )
-    elif classification == "quantile":
-        # Logarithmic steps representing typical urban heights
-        c1 = lo_hex
-        c2 = _interpolate_color(lo_hex, hi_hex, 0.2)
-        c3 = _interpolate_color(lo_hex, hi_hex, 0.4)
-        c4 = _interpolate_color(lo_hex, hi_hex, 0.7)
-        c5 = hi_hex
-        return (
-            f"CASE "
-            f" WHEN {h} <= 9 THEN '{c1}'"
-            f" WHEN {h} <= 18 THEN '{c2}'"
-            f" WHEN {h} <= 27 THEN '{c3}'"
-            f" WHEN {h} <= 45 THEN '{c4}'"
-            f" ELSE '{c5}' END"
-        )
-    else:
-        # Continuous (Linear)
-        r1, g1, b1 = _hex_to_rgb(lo_hex)
-        r2, g2, b2 = _hex_to_rgb(hi_hex)
-        def part(a, b):
-            return f"scale_linear({h}, {_RAMP_LO_M}, {_RAMP_HI_M}, {a}, {b})"
-        return f"color_rgb({part(r1, r2)}, {part(g1, g2)}, {part(b1, b2)})"
+    return min_h, max_h, b, [c1, c2, c3, c4, c5]
+
+
+def building_color_expression(mode=BUILDING_COLOR_FUNCTION, classification="continuous", layer=None) -> str:
+    """A QGIS expression returning each building's colour for ``mode``.
+
+    For ``function`` it wraps ``BUILDING_CLASS_EXPR`` into the OSM-use hex palette;
+    for the height/tinted modes it returns a soft ``color_rgb`` ramp by height. The
+    same expression drives the 2D fill and the native 3D diffuse colour, so the
+    massing always matches the flat map.
+    """
+    if mode in _BUILDING_RAMPS:
+        lo_hex, hi_hex = _BUILDING_RAMPS[mode]
+        classification = str(classification).lower()
+        min_h, max_h, breaks, colors = get_breaks_and_colors(layer, lo_hex, hi_hex, classification)
+        h = _BUILDING_HEIGHT_EXPR
+        
+        if classification == "continuous":
+            r1, g1, b1 = _hex_to_rgb(lo_hex)
+            r2, g2, b2 = _hex_to_rgb(hi_hex)
+            def part(a, b):
+                return f"scale_linear({h}, {min_h}, {max_h}, {a}, {b})"
+            return f"color_rgb({part(r1, r2)}, {part(g1, g2)}, {part(b1, b2)})"
+        else:
+            c1, c2, c3, c4, c5 = colors
+            b1, b2, b3, b4 = breaks
+            return (
+                f"CASE "
+                f" WHEN {h} <= {b1} THEN '{c1}'"
+                f" WHEN {h} <= {b2} THEN '{c2}'"
+                f" WHEN {h} <= {b3} THEN '{c3}'"
+                f" WHEN {h} <= {b4} THEN '{c4}'"
+                f" ELSE '{c5}' END"
+            )
+    cases = " ".join(f"WHEN '{key}' THEN '{hexv}'" for key, hexv in BUILDING_COLORS.items())
+    return f"CASE ({BUILDING_CLASS_EXPR}) {cases} ELSE '{BUILDING_COLORS['other']}' END"
 
 
 def building_color_swatches(mode=BUILDING_COLOR_FUNCTION):
@@ -223,20 +265,6 @@ def building_color_swatches(mode=BUILDING_COLOR_FUNCTION):
     if mode in _BUILDING_RAMPS:
         return list(_BUILDING_RAMPS[mode])
     return list(BUILDING_COLORS.values())
-
-
-def building_color_expression(mode=BUILDING_COLOR_FUNCTION, classification="continuous") -> str:
-    """A QGIS expression returning each building's colour for ``mode``.
-
-    For ``function`` it wraps ``BUILDING_CLASS_EXPR`` into the OSM-use hex palette;
-    for the height/tinted modes it returns a soft ``color_rgb`` ramp by height. The
-    same expression drives the 2D fill and the native 3D diffuse colour, so the
-    massing always matches the flat map.
-    """
-    if mode in _BUILDING_RAMPS:
-        return _ramp_color_expression(*_BUILDING_RAMPS[mode], classification=classification)
-    cases = " ".join(f"WHEN '{key}' THEN '{hexv}'" for key, hexv in BUILDING_COLORS.items())
-    return f"CASE ({BUILDING_CLASS_EXPR}) {cases} ELSE '{BUILDING_COLORS['other']}' END"
 
 
 # ── symbol factories ────────────────────────────────────────────────────────
@@ -281,7 +309,7 @@ def style_buildings(layer, mode=BUILDING_COLOR_FUNCTION, classification="continu
     """
     if mode in _BUILDING_RAMPS:
         symbol = _fill("#cfd6dd")
-        expr = building_color_expression(mode, classification=classification)
+        expr = building_color_expression(mode, classification=classification, layer=layer)
         try:
             symbol.symbolLayer(0).setDataDefinedProperty(
                 QgsSymbolLayer.PropertyFillColor, QgsProperty.fromExpression(expr))
@@ -369,31 +397,30 @@ def label_by_name(layer, size=8.0, color_hex="#3a4042", field="name"):
 def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_hex="#ffffff"):
     """Subtle 2D ground fill, tinted to match the building colour ``mode``.
 
-    If ``transparent`` is True, we use QgsInvertedPolygonRenderer to mask out the
-    draped basemap outside the study area with the map canvas background color.
+    If ``transparent`` is True, we use QPainter's CompositionMode_DestinationIn
+    to mask out the draped basemap outside the study area.
     """
     slab = base_color_hex(mode)
     outline = _scale_hex(slab, 1.25)
     if transparent:
         try:
-            from qgis.core import QgsInvertedPolygonRenderer
-            symbol = QgsFillSymbol.createSimple({
-                "color": bg_color_hex,
-                "outline_color": outline,
-                "outline_width": "0.25",
-                "style": "solid",
-            })
-            layer.setRenderer(QgsInvertedPolygonRenderer(QgsSingleSymbolRenderer(symbol)))
+            from qgis.PyQt.QtGui import QPainter
+            layer.setBlendMode(QPainter.CompositionMode_DestinationIn)
         except Exception:
-            # Fallback if inverted renderer fails
-            symbol = QgsFillSymbol.createSimple({
-                "color": "0,0,0,0",
-                "outline_color": outline,
-                "outline_width": "0.2",
-                "style": "no",
-            })
-            layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+            pass
+        symbol = QgsFillSymbol.createSimple({
+            "color": "#ffffff",
+            "outline_color": "0,0,0,0",
+            "outline_width": "0.0",
+            "style": "solid",
+        })
+        layer.setRenderer(QgsSingleSymbolRenderer(symbol))
     else:
+        try:
+            from qgis.PyQt.QtGui import QPainter
+            layer.setBlendMode(QPainter.CompositionMode_SourceOver)
+        except Exception:
+            pass
         fill = _scale_hex(slab, 1.6)        # light tint of the slab colour
         symbol = _fill(fill, outline=outline, outline_w=0.2)
         layer.setRenderer(QgsSingleSymbolRenderer(symbol))
