@@ -291,6 +291,15 @@ class PluginDialog(QDialog):
         self.cb_open3d = QCheckBox("Open a 3D Map View when done")
         form.addRow("", self.cb_open3d)
 
+        self.map_resolution = QComboBox()
+        self.map_resolution.addItem("Low (256 px)", 256)
+        self.map_resolution.addItem("Medium (512 px)", 512)
+        self.map_resolution.addItem("High (1024 px)", 1024)
+        self.map_resolution.addItem("Ultra (2048 px)", 2048)
+        self.map_resolution.addItem("Insane (4096 px)", 4096)
+        self.map_resolution.setToolTip("Draped map tile resolution in the 3D Map View. Higher values look sharper but use more memory.")
+        form.addRow("Map resolution (3D):", self.map_resolution)
+
         # 3D-dependent controls follow the extrusion toggle.
         self.cb_buildings.toggled.connect(self.cb_extrude.setEnabled)
         self.cb_extrude.toggled.connect(self.height_scale.setEnabled)
@@ -369,6 +378,7 @@ class PluginDialog(QDialog):
             "want_labels": self.cb_labels.isChecked(),
             "basemap": self.basemap.currentLayer(),
             "open_3d": self.cb_open3d.isChecked(),
+            "map_resolution": self.map_resolution.currentData(),
             "save_gpkg": self.cb_save_gpkg.isChecked(),
             "use_cache": self.cb_use_cache.isChecked(),
         }
@@ -400,6 +410,13 @@ class PluginDialog(QDialog):
         self.cb_furniture.setChecked(_truthy(s.value(f"{_S}/furniture"), False))
         self.cb_labels.setChecked(_truthy(s.value(f"{_S}/labels"), False))
         self.cb_open3d.setChecked(_truthy(s.value(f"{_S}/open3d"), True))
+        try:
+            res_val = int(s.value(f"{_S}/map_resolution", 1024))
+            ridx = self.map_resolution.findData(res_val)
+            if ridx >= 0:
+                self.map_resolution.setCurrentIndex(ridx)
+        except (TypeError, ValueError):
+            pass
         self.cb_save_gpkg.setChecked(_truthy(s.value(f"{_S}/save_gpkg"), False))
         self.cb_use_cache.setChecked(_truthy(s.value(f"{_S}/use_cache"), True))
         try:
@@ -426,6 +443,7 @@ class PluginDialog(QDialog):
         s.setValue(f"{_S}/furniture", p["want_furniture"])
         s.setValue(f"{_S}/labels", p["want_labels"])
         s.setValue(f"{_S}/open3d", p["open_3d"])
+        s.setValue(f"{_S}/map_resolution", p["map_resolution"])
         s.setValue(f"{_S}/height_scale", p["height_scale"])
         s.setValue(f"{_S}/save_gpkg", p["save_gpkg"])
         s.setValue(f"{_S}/use_cache", p["use_cache"])

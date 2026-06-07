@@ -318,25 +318,37 @@ def label_by_name(layer, size=8.0, color_hex="#3a4042", field="name"):
         return False
 
 
-def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False):
+def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_hex="#ffffff"):
     """Subtle 2D ground fill, tinted to match the building colour ``mode``.
 
-    If ``transparent`` is True, the fill style is set to "no" (fully transparent)
-    so the draped underlay basemap is visible through the plinth.
+    If ``transparent`` is True, we use QgsInvertedPolygonRenderer to mask out the
+    draped basemap outside the study area with the map canvas background color.
     """
     slab = base_color_hex(mode)
     outline = _scale_hex(slab, 1.25)
     if transparent:
-        symbol = QgsFillSymbol.createSimple({
-            "color": "0,0,0,0",
-            "outline_color": outline,
-            "outline_width": "0.2",
-            "style": "no",
-        })
+        try:
+            from qgis.core import QgsInvertedPolygonRenderer
+            symbol = QgsFillSymbol.createSimple({
+                "color": bg_color_hex,
+                "outline_color": outline,
+                "outline_width": "0.25",
+                "style": "solid",
+            })
+            layer.setRenderer(QgsInvertedPolygonRenderer(QgsSingleSymbolRenderer(symbol)))
+        except Exception:
+            # Fallback if inverted renderer fails
+            symbol = QgsFillSymbol.createSimple({
+                "color": "0,0,0,0",
+                "outline_color": outline,
+                "outline_width": "0.2",
+                "style": "no",
+            })
+            layer.setRenderer(QgsSingleSymbolRenderer(symbol))
     else:
         fill = _scale_hex(slab, 1.6)        # light tint of the slab colour
         symbol = _fill(fill, outline=outline, outline_w=0.2)
-    layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+        layer.setRenderer(QgsSingleSymbolRenderer(symbol))
     layer.triggerRepaint()
 
 

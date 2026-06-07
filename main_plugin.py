@@ -253,7 +253,8 @@ class OsmQuick3DPlugin:
         except Exception:
             pass
         try:
-            styling.style_base(base, color_mode, transparent=transparent)
+            bg_color_hex = self.iface.mapCanvas().canvasColor().name()
+            styling.style_base(base, color_mode, transparent=transparent, bg_color_hex=bg_color_hex)
         except Exception:
             pass
         project = QgsProject.instance()
@@ -384,37 +385,6 @@ class OsmQuick3DPlugin:
 
         if p["basemap"] is not None:
             self._move_basemap_bottom(p["basemap"])
-            try:
-                from qgis.core import QgsMapClippingRegion, QgsGeometry
-                canvas = self.iface.mapCanvas()
-                to_canvas = QgsCoordinateTransform(
-                    QgsCoordinateReferenceSystem.fromEpsgId(epsg),
-                    canvas.mapSettings().destinationCrs(), project,
-                )
-                
-                clip_geom = None
-                if base_layer is not None:
-                    feats = [f for f in base_layer.getFeatures()]
-                    if feats:
-                        clip_geom = feats[0].geometry()
-                if clip_geom is None:
-                    clip_geom = area_utm
-
-                canvas_geom = QgsGeometry(clip_geom)
-                canvas_geom.transform(to_canvas)
-                
-                clip_region = QgsMapClippingRegion(canvas_geom)
-                clip_region.setRestrictToLayers(True)
-                clip_region.setRestrictedLayers([p["basemap"]])
-                clip_region.setFeatureClip(QgsMapClippingRegion.ClipPainterOnly)
-                
-                settings = canvas.mapSettings()
-                settings.setClippingRegions([clip_region])
-                canvas.setMapSettings(settings)
-            except Exception as exc:
-                self.iface.messageBar().pushWarning(
-                    "OSM Quick 3D", f"Could not clip basemap: {exc}"
-                )
 
         try:
             canvas = self.iface.mapCanvas()
@@ -427,7 +397,7 @@ class OsmQuick3DPlugin:
         except Exception:
             pass
 
-        opened_3d = native3d.open_3d_view(self.iface) if p["open_3d"] else False
+        opened_3d = native3d.open_3d_view(self.iface, resolution=p.get("map_resolution", 1024)) if p["open_3d"] else False
 
         summary = f"{total} features added: " + ", ".join(added) + f" (EPSG:{epsg})."
         totals = self._building_totals(buildings_layer)

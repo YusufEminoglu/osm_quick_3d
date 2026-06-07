@@ -1,15 +1,15 @@
 # Changelog
 
+## [0.13.1] - 2026-06-08
+
+- Fix visual basemap clipping, base plinth capping/offset, and add 3D map tile resolution controls.
+
 ## [0.13.0] - 2026-06-08
 
-- Implement visual clipping of basemap, base plinth capping, and 2D transparency
-
-## [0.13.0] - 2026-06-08
-
-- Visual Basemap Clipping: implemented automatic masking of the underlay basemap to the base plinth (or study area) using QgsMapClippingRegion on the mapSettings, clipping both 2D and 3D terrain renders cleanly
-- Solid base capping: forced capping of top/bottom and walls using explicit setRenderedFacade(3) and setExtrusionFaces(3)
-- 2D Base transparency: modified base styling to be transparent inside when a basemap is present, preventing the solid base fill from obscuring the clipped basemap under the buildings
-- Dock state preservation: persisted the transparency state via custom layer properties so live styling updates in the dock respect the basemap visibility
+- Visual Basemap Clipping: implemented automatic masking of the underlay basemap to the base plinth (or study area) using QgsInvertedPolygonRenderer, which propagates to 3D drape rendering for a clean floating island model
+- Plinth Extrusion & Capping: fixed a double-shift vertical offset bug that caused the base plinth to be buried, and avoided Z-fighting with draped terrain
+- 3D Map Resolution Controls: added a "Map resolution (3D)" setting in both the dialog and docked panel to control draped map canvas tile size live (256px to 4096px)
+- Dock state preservation: remembers base transparency and resolution settings across runs
 
 ## [0.12.0] - 2026-06-08
 

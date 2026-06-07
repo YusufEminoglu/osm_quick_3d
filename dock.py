@@ -22,7 +22,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
     QDockWidget,
 )
-from qgis.core import QgsProject, QgsLayerTreeGroup, QgsLayerTreeLayer
+from qgis.core import QgsProject, QgsLayerTreeGroup, QgsLayerTreeLayer, QgsSettings
 
 from . import native3d, styling
 from .osm_download import BASE_DEPTH_M
@@ -38,6 +38,19 @@ class PluginDockWidget(QDockWidget):
         self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         
         self._build_ui()
+        
+        # Restore saved resolution settings
+        s = QgsSettings()
+        try:
+            res_val = int(s.value(f"{_S}/map_resolution", 1024))
+            ridx = self.map_resolution.findData(res_val)
+            if ridx >= 0:
+                self.map_resolution.blockSignals(True)
+                self.map_resolution.setCurrentIndex(ridx)
+                self.map_resolution.blockSignals(False)
+        except (TypeError, ValueError):
+            pass
+            
         self.refresh_groups()
         
     _QSS = """
@@ -142,8 +155,18 @@ class PluginDockWidget(QDockWidget):
         form.addRow("", self.cb_labels)
 
         self.cb_base = QCheckBox("Extrude ground base plinth")
+        self.cb_base.toggled.connect(self.cb_base.setEnabled) # dummy check
         self.cb_base.toggled.connect(self._apply_changes)
         form.addRow("", self.cb_base)
+
+        self.map_resolution = QComboBox()
+        self.map_resolution.addItem("Low (256 px)", 256)
+        self.map_resolution.addItem("Medium (512 px)", 512)
+        self.map_resolution.addItem("High (1024 px)", 1024)
+        self.map_resolution.addItem("Ultra (2048 px)", 2048)
+        self.map_resolution.addItem("Insane (4096 px)", 4096)
+        self.map_resolution.currentIndexChanged.connect(self._apply_resolution)
+        form.addRow("Map resolution (3D):", self.map_resolution)
 
         root.addWidget(settings_box)
         root.addStretch(1)
@@ -286,7 +309,8 @@ class PluginDockWidget(QDockWidget):
         if base:
             transparent_val = base.customProperty("osm_quick_3d/transparent")
             transparent = str(transparent_val).strip().lower() in ("true", "1", "yes", "on")
-            styling.style_base(base, color_mode, transparent=transparent)
+            bg_color_hex = self.iface.mapCanvas().canvasColor().name()
+            styling.style_base(base, color_mode, transparent=transparent, bg_color_hex=bg_color_hex)
             if want_base:
                 native3d.apply_base_slab(
                     base, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode))
@@ -295,3 +319,10 @@ class PluginDockWidget(QDockWidget):
                 base.triggerRepaint()
 
         self.iface.mapCanvas().refresh()
+
+    def _apply_resolution(self):
+        res = self.map_resolution.currentData()
+        if res:
+            native3d.set_3d_map_tile_resolution(self.iface, res)
+            s = QgsSettings()
+            s.setValue(f"{_S}/map_resolution", res)

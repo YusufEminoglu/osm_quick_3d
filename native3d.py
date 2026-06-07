@@ -151,7 +151,7 @@ def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color
         return False
 
 
-def apply_base_slab(layer, depth=5.0, top_z=-0.1, color_hex="#5e7274"):
+def apply_base_slab(layer, depth=5.0, top_z=-0.01, color_hex="#5e7274"):
     """Extrude the ground base as a recessed slab: top at ``top_z``, ``depth`` deep.
 
     The slab's top face sits at ``top_z`` (ground level, 0) and its base reaches
@@ -184,6 +184,14 @@ def apply_base_slab(layer, depth=5.0, top_z=-0.1, color_hex="#5e7274"):
 
     # Drop the slab so its top lands at top_z: base height = top_z - depth.
     try:
+        symbol.setHeight(float(top_z) - float(depth))
+    except Exception:
+        pass
+    try:
+        symbol.setOffset(0.0)  # Reset vertical offset to prevent double shifting
+    except Exception:
+        pass
+    try:
         from qgis.core import QgsProperty
         ddp = symbol.dataDefinedProperties()
         height_key = getattr(QgsPolygon3DSymbol, "PropertyHeight", None)
@@ -192,6 +200,9 @@ def apply_base_slab(layer, depth=5.0, top_z=-0.1, color_hex="#5e7274"):
         ext_key = getattr(QgsPolygon3DSymbol, "PropertyExtrusionHeight", None)
         if ext_key is not None:
             ddp.setProperty(ext_key, QgsProperty.fromValue(float(depth)))
+        offset_key = getattr(QgsPolygon3DSymbol, "PropertyOffset", None)
+        if offset_key is not None:
+            ddp.setProperty(offset_key, QgsProperty.fromValue(0.0))
         symbol.setDataDefinedProperties(ddp)
     except Exception:
         pass
@@ -281,7 +292,31 @@ def apply_tree_3d(layer, color_hex="#5f9e4c"):
         return False
 
 
-def open_3d_view(iface):
+def set_3d_map_tile_resolution(iface, resolution=1024):
+    """Find all active Qgs3DMapCanvas widgets in the project and set their tile resolution."""
+    try:
+        from qgis.PyQt.QtWidgets import QWidget
+        canvases = []
+        for w in iface.mainWindow().findChildren(QWidget):
+            try:
+                if w.metaObject().className() == "Qgs3DMapCanvas":
+                    canvases.append(w)
+            except Exception:
+                pass
+
+        for c3d in canvases:
+            try:
+                settings = c3d.mapSettings()
+                if hasattr(settings, "setMapTileResolution"):
+                    settings.setMapTileResolution(int(resolution))
+                    c3d.setMapSettings(settings)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def open_3d_view(iface, resolution=1024):
     """Best-effort: open a QGIS 3D Map View by triggering the built-in action.
 
     There is no clean public API to spawn a 3D canvas, so we trigger the same
@@ -297,22 +332,35 @@ def open_3d_view(iface):
     except Exception:
         return False
 
+    triggered = False
     for obj_name in ("mActionNew3DMapView", "mActionNew3DMapCanvas", "mActionNew3DMap"):
         act = win.findChild(QAction, obj_name)
         if act is not None:
             try:
                 act.trigger()
-                return True
+                triggered = True
+                break
             except Exception:
                 pass
 
-    # Fall back to matching the action by its (localized) text.
-    try:
-        for act in win.findChildren(QAction):
-            text = (act.text() or "").lower()
-            if "3d" in text and ("map" in text or "harita" in text):
-                act.trigger()
-                return True
-    except Exception:
-        pass
+    if not triggered:
+        # Fall back to matching the action by its (localized) text.
+        try:
+            for act in win.findChildren(QAction):
+                text = (act.text() or "").lower()
+                if "3d" in text and ("map" in text or "harita" in text):
+                    act.trigger()
+                    triggered = True
+                    break
+        except Exception:
+            pass
+
+    if triggered:
+        # Give QGIS 3D Map View 600 ms to spawn, then apply the map tile resolution
+        try:
+            from qgis.PyQt.QtCore import QTimer
+            QTimer.singleShot(600, lambda: set_3d_map_tile_resolution(iface, resolution))
+        except Exception:
+            pass
+        return True
     return False
