@@ -17,7 +17,7 @@ falls back to a "open a 3D Map View yourself" hint.
 """
 from __future__ import annotations
 
-EXTRUSION_EXPRESSION = 'coalesce("height", "building_levels" * 3, 9)'
+EXTRUSION_EXPRESSION = 'coalesce(to_real("height"), to_int("building_levels") * 3, 9)'
 
 
 def _extrusion_expression(height_scale=1.0):

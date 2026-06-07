@@ -3,7 +3,7 @@ name=OSM Quick 3D
 qgisMinimumVersion=3.28
 qgisMaximumVersion=3.99
 description=One-click OpenStreetMap into native QGIS: function-styled layers plus flat-roof 3D building massing on a selectable study-area shape (rectangle, rounded rectangle, circle or hexagon) over a recessed ground base, built for larger areas.
-version=0.13.2
+version=0.14.0
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -23,11 +23,11 @@ hasProcessingProvider=no
 license=MIT
 
 changelog=
-    OSM Quick 3D 0.13.0
-        - Visual Basemap Clipping: clips the basemap to the study area boundary using an inverted polygon mask in 2D and 3D.
-        - Plinth Capping & Offset: fixed double-shifting to prevent plinth burying, and resolved Z-fighting with draped terrain.
-        - 3D Map Resolution Controls: select map tile resolution (256px to 4096px) in dialog and dock to update rendering live.
-        - Dock state preservation: remembers base transparency and resolution settings across runs.
+    OSM Quick 3D 0.14.0
+        - Two-Layer Basemap Clipping: splits base into 2D mask layer (draped on terrain) and 3D plinth walls layer, ensuring basemap is cleanly clipped in 3D Map View.
+        - Color Classifications: choose Continuous, Discrete steps, or Quantiles for height-graduated building colors.
+        - View Stacking: programmatically stacks the 3D Map View dock widget directly above the plugin styling dock panel.
+        - Cast-Safe expressions: explicit conversions (to_real/to_int) prevent evaluation errors on text-stored height fields.
     OSM Quick 3D 0.12.0
         - Scrollable UI panels: wrapped dialog and dock settings in resizable scroll areas for smaller monitors.
         - Compact design: reduced padding, margins, and font sizes to 11px to make UI compact and highly professional.

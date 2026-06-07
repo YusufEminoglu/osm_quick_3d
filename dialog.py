@@ -275,6 +275,14 @@ class PluginDialog(QDialog):
         )
         form.addRow("Building colours:", self.building_color)
 
+        self.classification = QComboBox()
+        self.classification.addItem("Continuous (smooth)", "continuous")
+        self.classification.addItem("Discrete intervals (equal)", "discrete")
+        self.classification.addItem("Quantile (typical heights)", "quantile")
+        self.classification.setToolTip("Classification mode for height-graduated colours.")
+        form.addRow("Color classification:", self.classification)
+        self.building_color.currentIndexChanged.connect(self._update_classification_enabled)
+
         self.color_preview = QFrame()
         self.color_preview.setFixedHeight(14)
         self.color_preview.setToolTip("Preview of the selected building-colour ramp (low → tall).")
@@ -369,6 +377,7 @@ class PluginDialog(QDialog):
             "extrude_3d": self.cb_extrude.isChecked() and self.cb_buildings.isChecked(),
             "height_scale": self.height_scale.value(),
             "building_color": self.building_color.currentData(),
+            "classification": self.classification.currentData(),
             "want_base": self.cb_base.isChecked(),
             "want_roads": self.cb_roads.isChecked(),
             "want_water": self.cb_water.isChecked(),
@@ -417,6 +426,13 @@ class PluginDialog(QDialog):
                 self.map_resolution.setCurrentIndex(ridx)
         except (TypeError, ValueError):
             pass
+        try:
+            class_val = s.value(f"{_S}/classification", "continuous")
+            clidx = self.classification.findData(class_val)
+            if clidx >= 0:
+                self.classification.setCurrentIndex(clidx)
+        except (TypeError, ValueError):
+            pass
         self.cb_save_gpkg.setChecked(_truthy(s.value(f"{_S}/save_gpkg"), False))
         self.cb_use_cache.setChecked(_truthy(s.value(f"{_S}/use_cache"), True))
         try:
@@ -425,6 +441,7 @@ class PluginDialog(QDialog):
             pass
         self.cb_extrude.setEnabled(self.cb_buildings.isChecked())
         self.height_scale.setEnabled(self.cb_extrude.isChecked())
+        self._update_classification_enabled()
         self._update_color_preview()
 
     def _save(self, p):
@@ -444,9 +461,15 @@ class PluginDialog(QDialog):
         s.setValue(f"{_S}/labels", p["want_labels"])
         s.setValue(f"{_S}/open3d", p["open_3d"])
         s.setValue(f"{_S}/map_resolution", p["map_resolution"])
+        s.setValue(f"{_S}/classification", p["classification"])
         s.setValue(f"{_S}/height_scale", p["height_scale"])
         s.setValue(f"{_S}/save_gpkg", p["save_gpkg"])
         s.setValue(f"{_S}/use_cache", p["use_cache"])
+
+    def _update_classification_enabled(self):
+        mode = self.building_color.currentData()
+        is_ramp = mode != BUILDING_COLOR_FUNCTION
+        self.classification.setEnabled(is_ramp)
 
     def set_status(self, text, *, error=False):
         self.status.setStyleSheet(

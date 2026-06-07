@@ -145,6 +145,7 @@ class OsmQuick3DPlugin:
             return lambda layer: styling.style_points(layer, color_hex, size)
 
         color_mode = p.get("building_color", styling.BUILDING_COLOR_FUNCTION)
+        classification = p.get("classification", "continuous")
         return [
             ("greens", p["want_greens"], styling.style_greens),
             ("waterareas", p["want_water"], styling.style_waterareas),
@@ -157,7 +158,7 @@ class OsmQuick3DPlugin:
             ("lights", p["want_furniture"], points("#d8c98a", 1.6)),
             ("trashbins", p["want_furniture"], points("#8a9a8a", 1.4)),
             ("buildings", p["want_buildings"],
-             lambda layer: styling.style_buildings(layer, color_mode)),
+             lambda layer: styling.style_buildings(layer, color_mode, classification=classification)),
         ]
 
     def _ask_gpkg_path(self):
@@ -263,9 +264,24 @@ class OsmQuick3DPlugin:
             group.addLayer(base)  # appended last == bottom of the group
         else:
             project.addMapLayer(base)
-        if p.get("extrude_3d"):
-            native3d.apply_base_slab(
-                base, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode))
+            
+        if p.get("extrude_3d") and p.get("want_base"):
+            try:
+                base_3d = base.clone()
+                base_3d.setName("OSM Base 3D")
+                styling.style_base_3d_2d(base_3d)
+                project.addMapLayer(base_3d, False)
+                if group is not None:
+                    # Insert base_3d at the bottom of the group (below base)
+                    group.insertLayer(len(group.children()), base_3d)
+                else:
+                    project.addMapLayer(base_3d)
+                native3d.apply_base_slab(
+                    base_3d, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode))
+            except Exception:
+                # Fallback to main base layer if clone fails
+                native3d.apply_base_slab(
+                    base, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode))
         return base, gpkg_failed
 
     # ── main run ───────────────────────────────────────────────────────────
@@ -371,7 +387,8 @@ class OsmQuick3DPlugin:
                 color_hex=styling.building_base_color(p.get("building_color", styling.BUILDING_COLOR_FUNCTION)),
                 height_scale=p.get("height_scale", 1.0),
                 color_expr=styling.building_color_expression(
-                    p.get("building_color", styling.BUILDING_COLOR_FUNCTION)),
+                    p.get("building_color", styling.BUILDING_COLOR_FUNCTION),
+                    classification=p.get("classification", "continuous")),
             )
         # Tree points get a matching 3D pass (green canopies) when 3D is on.
         if p["extrude_3d"] and trees_layer is not None:
@@ -399,6 +416,10 @@ class OsmQuick3DPlugin:
             pass
 
         opened_3d = native3d.open_3d_view(self.iface, resolution=p.get("map_resolution", 1024)) if p["open_3d"] else False
+        
+        if p["open_3d"]:
+            from qgis.PyQt.QtCore import QTimer
+            QTimer.singleShot(1000, self._dock_3d_above_controller)
 
         summary = f"{total} features added: " + ", ".join(added) + f" (EPSG:{epsg})."
         totals = self._building_totals(buildings_layer)
@@ -433,3 +454,31 @@ class OsmQuick3DPlugin:
 
     def _error(self, title, text):
         QMessageBox.critical(self.iface.mainWindow(), title, text)
+
+    def _dock_3d_above_controller(self):
+        """Programmatically stack the QGIS 3D view dock widget directly above our controller dock."""
+        try:
+            from qgis.PyQt.QtWidgets import QDockWidget, QWidget
+            from qgis.PyQt.QtCore import Qt
+            
+            c3d_dock = None
+            win = self.iface.mainWindow()
+            for w in win.findChildren(QWidget):
+                if w.metaObject().className() == "Qgs3DMapCanvas":
+                    curr = w
+                    while curr is not None:
+                        if isinstance(curr, QDockWidget):
+                            c3d_dock = curr
+                            break
+                        curr = curr.parent()
+                    if c3d_dock:
+                        break
+            
+            if c3d_dock and self.dock:
+                win.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, c3d_dock)
+                win.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
+                win.splitDockWidget(c3d_dock, self.dock, Qt.Vertical)
+                c3d_dock.show()
+                self.dock.show()
+        except Exception:
+            pass

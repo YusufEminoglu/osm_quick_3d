@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.14.0] - 2026-06-08
+
+- Add two-layer basemap clipping, robust height value casting, continuous/discrete/quantile classification controls, and programmatically stack 3D view dock widget above the controller.
+
 ## [0.13.2] - 2026-06-08
 
 - Fix 3D resolution updates, add building color fallback in 3D, and reorganize dock UI with an Advanced Style panel.

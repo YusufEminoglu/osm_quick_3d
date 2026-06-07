@@ -50,6 +50,15 @@ class PluginDockWidget(QDockWidget):
                 self.map_resolution.blockSignals(False)
         except (TypeError, ValueError):
             pass
+        try:
+            class_val = s.value(f"{_S}/classification", "continuous")
+            clidx = self.classification.findData(class_val)
+            if clidx >= 0:
+                self.classification.blockSignals(True)
+                self.classification.setCurrentIndex(clidx)
+                self.classification.blockSignals(False)
+        except (TypeError, ValueError):
+            pass
             
         self.refresh_groups()
         
@@ -143,8 +152,16 @@ class PluginDockWidget(QDockWidget):
         for value, label in styling.BUILDING_COLOR_MODES:
             self.building_color.addItem(label, value)
         self.building_color.currentIndexChanged.connect(self._update_color_preview)
+        self.building_color.currentIndexChanged.connect(self._update_classification_enabled)
         self.building_color.currentIndexChanged.connect(self._apply_changes)
         form.addRow("Building colours:", self.building_color)
+
+        self.classification = QComboBox()
+        self.classification.addItem("Continuous (smooth)", "continuous")
+        self.classification.addItem("Discrete intervals (equal)", "discrete")
+        self.classification.addItem("Quantile (typical heights)", "quantile")
+        self.classification.currentIndexChanged.connect(self._apply_changes)
+        form.addRow("Color classification:", self.classification)
 
         self.color_preview = QFrame()
         self.color_preview.setFixedHeight(12)
@@ -255,6 +272,8 @@ class PluginDockWidget(QDockWidget):
                         layers["roads"] = layer
                     elif name == "OSM Base":
                         layers["base"] = layer
+                    elif name == "OSM Base 3D":
+                        layers["base_3d"] = layer
         return layers
 
     def _update_color_preview(self):
@@ -281,20 +300,21 @@ class PluginDockWidget(QDockWidget):
         base = layers.get("base")
 
         color_mode = self.building_color.currentData()
+        classification = self.classification.currentData()
         scale = self.height_scale.value()
         want_labels = self.cb_labels.isChecked()
         want_base = self.cb_base.isChecked()
 
         if buildings:
             # Update 2D styling
-            styling.style_buildings(buildings, color_mode)
+            styling.style_buildings(buildings, color_mode, classification=classification)
             
             # Update 3D extrusion
             native3d.apply_building_extrusion(
                 buildings,
                 color_hex=styling.building_base_color(color_mode),
                 height_scale=scale,
-                color_expr=styling.building_color_expression(color_mode)
+                color_expr=styling.building_color_expression(color_mode, classification=classification)
             )
 
             # Update Labels
@@ -318,12 +338,24 @@ class PluginDockWidget(QDockWidget):
             transparent = str(transparent_val).strip().lower() in ("true", "1", "yes", "on")
             bg_color_hex = self.iface.mapCanvas().canvasColor().name()
             styling.style_base(base, color_mode, transparent=transparent, bg_color_hex=bg_color_hex)
-            if want_base:
+            
+        if want_base:
+            if not base_3d and base:
+                try:
+                    base_3d = base.clone()
+                    base_3d.setName("OSM Base 3D")
+                    styling.style_base_3d_2d(base_3d)
+                    QgsProject.instance().addMapLayer(base_3d, False)
+                    group_node.insertLayer(len(group_node.children()), base_3d)
+                except Exception:
+                    pass
+            if base_3d:
                 native3d.apply_base_slab(
-                    base, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode))
-            else:
-                base.setRenderer3D(None)
-                base.triggerRepaint()
+                    base_3d, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode))
+        else:
+            if base_3d:
+                base_3d.setRenderer3D(None)
+                base_3d.triggerRepaint()
 
         self.iface.mapCanvas().refresh()
 
@@ -333,3 +365,8 @@ class PluginDockWidget(QDockWidget):
             native3d.set_3d_map_tile_resolution(self.iface, res)
             s = QgsSettings()
             s.setValue(f"{_S}/map_resolution", res)
+
+    def _update_classification_enabled(self):
+        mode = self.building_color.currentData()
+        is_ramp = mode != styling.BUILDING_COLOR_FUNCTION
+        self.classification.setEnabled(is_ramp)

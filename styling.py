@@ -120,7 +120,7 @@ BUILDING_COLOR_MODES = (
 )
 
 # Per-feature extrusion/colour height, in metres (tagged height, else floors*3).
-_BUILDING_HEIGHT_EXPR = 'coalesce("height", "building_levels" * 3, 9)'
+_BUILDING_HEIGHT_EXPR = 'coalesce(to_real("height"), to_int("building_levels") * 3, 9)'
 _RAMP_LO_M, _RAMP_HI_M = 3.0, 60.0
 
 
@@ -161,17 +161,58 @@ def building_base_color(mode=BUILDING_COLOR_FUNCTION) -> str:
     return "#cac5bf"
 
 
-def _ramp_color_expression(lo_hex, hi_hex):
-    """A color_rgb() expression interpolating lo->hi by building height."""
-    r1, g1, b1 = _hex_to_rgb(lo_hex)
-    r2, g2, b2 = _hex_to_rgb(hi_hex)
+def _interpolate_color(c1_hex, c2_hex, factor):
+    """Interpolate between two hex colors by factor [0.0, 1.0]."""
+    r1, g1, b1 = _hex_to_rgb(c1_hex)
+    r2, g2, b2 = _hex_to_rgb(c2_hex)
+    r = int(r1 + (r2 - r1) * factor)
+    g = int(g1 + (g2 - g1) * factor)
+    b = int(b1 + (b2 - b1) * factor)
+    return "#%02x%02x%02x" % (r, g, b)
+
+
+def _ramp_color_expression(lo_hex, hi_hex, classification="continuous"):
+    """A color_rgb() expression interpolating lo->hi by building height, step or quantile."""
     h = _BUILDING_HEIGHT_EXPR
-
-    def part(a, b):
-        # scale_linear clamps to the output range outside [lo, hi] metres.
-        return f"scale_linear({h}, {_RAMP_LO_M}, {_RAMP_HI_M}, {a}, {b})"
-
-    return f"color_rgb({part(r1, r2)}, {part(g1, g2)}, {part(b1, b2)})"
+    classification = str(classification).lower()
+    
+    if classification == "discrete":
+        # Equal Intervals: 3m to 60m divided into 5 steps
+        c1 = lo_hex
+        c2 = _interpolate_color(lo_hex, hi_hex, 0.25)
+        c3 = _interpolate_color(lo_hex, hi_hex, 0.5)
+        c4 = _interpolate_color(lo_hex, hi_hex, 0.75)
+        c5 = hi_hex
+        return (
+            f"CASE "
+            f" WHEN {h} <= 15 THEN '{c1}'"
+            f" WHEN {h} <= 30 THEN '{c2}'"
+            f" WHEN {h} <= 45 THEN '{c3}'"
+            f" WHEN {h} <= 60 THEN '{c4}'"
+            f" ELSE '{c5}' END"
+        )
+    elif classification == "quantile":
+        # Logarithmic steps representing typical urban heights
+        c1 = lo_hex
+        c2 = _interpolate_color(lo_hex, hi_hex, 0.2)
+        c3 = _interpolate_color(lo_hex, hi_hex, 0.4)
+        c4 = _interpolate_color(lo_hex, hi_hex, 0.7)
+        c5 = hi_hex
+        return (
+            f"CASE "
+            f" WHEN {h} <= 9 THEN '{c1}'"
+            f" WHEN {h} <= 18 THEN '{c2}'"
+            f" WHEN {h} <= 27 THEN '{c3}'"
+            f" WHEN {h} <= 45 THEN '{c4}'"
+            f" ELSE '{c5}' END"
+        )
+    else:
+        # Continuous (Linear)
+        r1, g1, b1 = _hex_to_rgb(lo_hex)
+        r2, g2, b2 = _hex_to_rgb(hi_hex)
+        def part(a, b):
+            return f"scale_linear({h}, {_RAMP_LO_M}, {_RAMP_HI_M}, {a}, {b})"
+        return f"color_rgb({part(r1, r2)}, {part(g1, g2)}, {part(b1, b2)})"
 
 
 def building_color_swatches(mode=BUILDING_COLOR_FUNCTION):
@@ -184,7 +225,7 @@ def building_color_swatches(mode=BUILDING_COLOR_FUNCTION):
     return list(BUILDING_COLORS.values())
 
 
-def building_color_expression(mode=BUILDING_COLOR_FUNCTION) -> str:
+def building_color_expression(mode=BUILDING_COLOR_FUNCTION, classification="continuous") -> str:
     """A QGIS expression returning each building's colour for ``mode``.
 
     For ``function`` it wraps ``BUILDING_CLASS_EXPR`` into the OSM-use hex palette;
@@ -193,7 +234,7 @@ def building_color_expression(mode=BUILDING_COLOR_FUNCTION) -> str:
     massing always matches the flat map.
     """
     if mode in _BUILDING_RAMPS:
-        return _ramp_color_expression(*_BUILDING_RAMPS[mode])
+        return _ramp_color_expression(*_BUILDING_RAMPS[mode], classification=classification)
     cases = " ".join(f"WHEN '{key}' THEN '{hexv}'" for key, hexv in BUILDING_COLORS.items())
     return f"CASE ({BUILDING_CLASS_EXPR}) {cases} ELSE '{BUILDING_COLORS['other']}' END"
 
@@ -232,7 +273,7 @@ def _categorized(expression, mapping_to_symbol):
 
 
 # ── per-layer styling ───────────────────────────────────────────────────────
-def style_buildings(layer, mode=BUILDING_COLOR_FUNCTION):
+def style_buildings(layer, mode=BUILDING_COLOR_FUNCTION, classification="continuous"):
     """Style buildings by ``mode``: function categories or a soft height ramp.
 
     Ramp modes use one fill symbol whose colour is data-defined by the same
@@ -240,7 +281,7 @@ def style_buildings(layer, mode=BUILDING_COLOR_FUNCTION):
     """
     if mode in _BUILDING_RAMPS:
         symbol = _fill("#cfd6dd")
-        expr = building_color_expression(mode)
+        expr = building_color_expression(mode, classification=classification)
         try:
             symbol.symbolLayer(0).setDataDefinedProperty(
                 QgsSymbolLayer.PropertyFillColor, QgsProperty.fromExpression(expr))
@@ -361,4 +402,16 @@ def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_
 
 def style_points(layer, color_hex="#b9897a", size=1.8):
     layer.setRenderer(QgsSingleSymbolRenderer(_marker(color_hex, size)))
+    layer.triggerRepaint()
+
+
+def style_base_3d_2d(layer):
+    """Make the 2D representation of the 3D plinth layer completely invisible."""
+    symbol = QgsFillSymbol.createSimple({
+        "color": "0,0,0,0",
+        "outline_color": "0,0,0,0",
+        "style": "no",
+        "outline_width": "0.0",
+    })
+    layer.setRenderer(QgsSingleSymbolRenderer(symbol))
     layer.triggerRepaint()
