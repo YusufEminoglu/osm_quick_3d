@@ -19,6 +19,7 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSlider,
     QTabWidget,
     QVBoxLayout,
@@ -44,6 +45,22 @@ def _truthy(value, default):
     if value is None:
         return default
     return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _qt_value(owner, enum_name, value_name, fallback_name=None):
+    try:
+        enum_owner = getattr(owner, enum_name)
+        return getattr(enum_owner, value_name)
+    except AttributeError:
+        return getattr(owner, fallback_name or value_name)
+
+
+def _scroll_policy(name):
+    return _qt_value(Qt, "ScrollBarPolicy", name)
+
+
+def _size_policy(name):
+    return _qt_value(QSizePolicy, "Policy", name)
 
 
 class PluginDockWidget(QDockWidget):
@@ -179,7 +196,8 @@ class PluginDockWidget(QDockWidget):
         border-bottom-color: transparent;
         border-top-left-radius: 6px;
         border-top-right-radius: 6px;
-        padding: 7px 12px;
+        min-width: 54px;
+        padding: 7px 8px;
         font-size: 11px;
         font-weight: 700;
         margin-right: 2px;
@@ -233,7 +251,8 @@ class PluginDockWidget(QDockWidget):
                 | QDockWidget.DockWidgetFloatable
             )
         self.setFeatures(features)
-        self.setMinimumWidth(360)
+        self.setMinimumWidth(300)
+        self.resize(430, 720)
 
         self._embedded_canvas = None
         self._embedded_original_parent = None
@@ -261,12 +280,21 @@ class PluginDockWidget(QDockWidget):
         root.addWidget(self._header())
 
         self.tab_widget = QTabWidget()
+        self.tab_widget.setUsesScrollButtons(True)
+        self.tab_widget.setDocumentMode(True)
+        try:
+            self.tab_widget.setElideMode(Qt.TextElideMode.ElideRight)
+        except AttributeError:
+            self.tab_widget.setElideMode(getattr(Qt, "ElideRight"))
         self.download_tab = self._download_tab()
         self.live_tab = self._live_tab()
         self.view_tab = self._view_tab()
-        self.tab_widget.addTab(self.download_tab, "Download & Build")
-        self.tab_widget.addTab(self.live_tab, "Live Styling")
-        self.tab_widget.addTab(self.view_tab, "3D View")
+        self.tab_widget.addTab(self.download_tab, "Build")
+        self.tab_widget.addTab(self.live_tab, "Style")
+        self.tab_widget.addTab(self.view_tab, "3D")
+        self.tab_widget.setTabToolTip(0, "Download & Build")
+        self.tab_widget.setTabToolTip(1, "Live Styling")
+        self.tab_widget.setTabToolTip(2, "Embedded 3D Map View")
         root.addWidget(self.tab_widget, 1)
 
         self.setWidget(root_widget)
@@ -289,7 +317,7 @@ class PluginDockWidget(QDockWidget):
         text_col.setSpacing(1)
         title = QLabel("OSM Quick 3D")
         title.setObjectName("HeaderTitle")
-        subtitle = QLabel("Native QGIS download, styling, and 3D massing")
+        subtitle = QLabel("Native QGIS 2D + 3D")
         subtitle.setObjectName("HeaderSubtitle")
         text_col.addWidget(title)
         text_col.addWidget(subtitle)
@@ -305,14 +333,28 @@ class PluginDockWidget(QDockWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setVerticalScrollBarPolicy(_scroll_policy("ScrollBarAsNeeded"))
+        scroll.setHorizontalScrollBarPolicy(_scroll_policy("ScrollBarAlwaysOff"))
         content = QWidget()
         content.setStyleSheet("background: transparent;")
+        content.setSizePolicy(_size_policy("Preferred"), _size_policy("MinimumExpanding"))
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 4, 0)
         layout.setSpacing(8)
         scroll.setWidget(content)
         outer.addWidget(scroll, 1)
         return tab, layout
+
+    def _configure_form(self, form):
+        try:
+            form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        except AttributeError:
+            form.setFieldGrowthPolicy(getattr(QFormLayout, "AllNonFixedFieldsGrow"))
+        try:
+            form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        except AttributeError:
+            form.setRowWrapPolicy(getattr(QFormLayout, "WrapLongRows"))
+        return form
 
     def _download_tab(self):
         tab, layout = self._scroll_tab()
@@ -334,8 +376,8 @@ class PluginDockWidget(QDockWidget):
         return tab
 
     def _download_area_group(self):
-        box = QGroupBox("Study area")
-        form = QFormLayout(box)
+        box = QGroupBox("Area")
+        form = self._configure_form(QFormLayout(box))
 
         self.area_source = QComboBox()
         self.area_source.addItem("Visible map extent (canvas)", "canvas")
@@ -377,8 +419,8 @@ class PluginDockWidget(QDockWidget):
         return box
 
     def _download_3d_group(self):
-        box = QGroupBox("3D and color")
-        form = QFormLayout(box)
+        box = QGroupBox("3D color")
+        form = self._configure_form(QFormLayout(box))
 
         self.cb_extrude = QCheckBox("3D extrusion")
         form.addRow("", self.cb_extrude)
@@ -434,7 +476,7 @@ class PluginDockWidget(QDockWidget):
 
     def _download_output_group(self):
         box = QGroupBox("Output")
-        form = QFormLayout(box)
+        form = self._configure_form(QFormLayout(box))
 
         self.basemap = QgsMapLayerComboBox()
         self.basemap.setFilters(QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
@@ -459,7 +501,7 @@ class PluginDockWidget(QDockWidget):
     def _live_tab(self):
         tab, layout = self._scroll_tab()
 
-        target_box = QGroupBox("Target city group")
+        target_box = QGroupBox("Group")
         target_layout = QHBoxLayout(target_box)
         self.group_combo = QComboBox()
         self.group_combo.currentIndexChanged.connect(self._on_group_selected)
@@ -469,7 +511,7 @@ class PluginDockWidget(QDockWidget):
         target_layout.addWidget(self.refresh_btn)
         layout.addWidget(target_box)
 
-        theme_box = QGroupBox("Map theme")
+        theme_box = QGroupBox("Theme")
         theme_layout = QHBoxLayout(theme_box)
         self.live_theme_combo = QComboBox()
         for key, val in styling.THEMES.items():
@@ -478,8 +520,8 @@ class PluginDockWidget(QDockWidget):
         theme_layout.addWidget(self.live_theme_combo, 1)
         layout.addWidget(theme_box)
 
-        settings_box = QGroupBox("Buildings and base")
-        form = QFormLayout(settings_box)
+        settings_box = QGroupBox("Buildings")
+        form = self._configure_form(QFormLayout(settings_box))
 
         self.live_height_scale = QDoubleSpinBox()
         self.live_height_scale.setRange(0.5, 5.0)
@@ -527,8 +569,8 @@ class PluginDockWidget(QDockWidget):
         form.addRow("Map resolution:", self.live_map_resolution)
         layout.addWidget(settings_box)
 
-        layer_style_box = QGroupBox("Layer styling")
-        layer_form = QFormLayout(layer_style_box)
+        layer_style_box = QGroupBox("Layers")
+        layer_form = self._configure_form(QFormLayout(layer_style_box))
 
         self.building_opacity = QSlider(Qt.Orientation.Horizontal)
         self.building_opacity.setRange(0, 100)
@@ -578,9 +620,11 @@ class PluginDockWidget(QDockWidget):
         layout.setSpacing(8)
 
         controls = QHBoxLayout()
-        self.open_3d_btn = QPushButton("Open 3D view")
+        self.open_3d_btn = QPushButton("Open")
+        self.open_3d_btn.setToolTip("Open a QGIS 3D Map View and embed it here.")
         self.open_3d_btn.clicked.connect(self._on_open_3d_clicked)
-        self.restore_3d_btn = QPushButton("Restore external")
+        self.restore_3d_btn = QPushButton("Restore")
+        self.restore_3d_btn.setToolTip("Return the embedded 3D view to its original QGIS dock.")
         self.restore_3d_btn.clicked.connect(self.cleanup_embedded_3d)
         controls.addWidget(self.open_3d_btn)
         controls.addWidget(self.restore_3d_btn)

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.18.1] - 2026-06-08
+
+- Fix dock scrolling and compact tab/category headings
+
 ## [0.18.0] - 2026-06-08
 
 - Add unified dock panel with embedded 3D view and fix height coloring/clipping
