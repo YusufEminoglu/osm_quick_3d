@@ -284,7 +284,9 @@ class PluginDockWidget(QDockWidget):
                 roads.triggerRepaint()
 
         if base:
-            styling.style_base(base, color_mode)
+            transparent_val = base.customProperty("osm_quick_3d/transparent")
+            transparent = str(transparent_val).strip().lower() in ("true", "1", "yes", "on")
+            styling.style_base(base, color_mode, transparent=transparent)
             if want_base:
                 native3d.apply_base_slab(
                     base, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode))

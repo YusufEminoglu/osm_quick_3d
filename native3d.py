@@ -170,6 +170,14 @@ def apply_base_slab(layer, depth=5.0, top_z=-0.1, color_hex="#5e7274"):
     except Exception:
         pass
     try:
+        symbol.setRenderedFacade(3)  # WallsAndRoofs
+    except Exception:
+        pass
+    try:
+        symbol.setExtrusionFaces(3)  # WallsAndRoofs
+    except Exception:
+        pass
+    try:
         symbol.setExtrusionHeight(float(depth))
     except Exception:
         pass

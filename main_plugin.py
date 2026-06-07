@@ -233,12 +233,12 @@ class OsmQuick3DPlugin:
         """Build, persist (optionally), style and 3D-extrude the ground base.
 
         The base goes to the bottom of the group so it underlies the city in 2D,
-        and is extruded as a recessed slab in 3D. Returns (added?, gpkg_failed?).
+        and is extruded as a recessed slab in 3D. Returns (base_layer, gpkg_failed).
         """
         try:
             base = build_base_layer(area_utm, epsg)
         except Exception:
-            return False, False
+            return None, False
         gpkg_failed = False
         if gpkg_path is not None:
             loaded, err = self._persist_to_gpkg(base, "base", gpkg_path, gpkg_first)
@@ -247,8 +247,13 @@ class OsmQuick3DPlugin:
             else:
                 gpkg_failed = True
         color_mode = p.get("building_color", styling.BUILDING_COLOR_FUNCTION)
+        transparent = p.get("basemap") is not None
         try:
-            styling.style_base(base, color_mode)
+            base.setCustomProperty("osm_quick_3d/transparent", transparent)
+        except Exception:
+            pass
+        try:
+            styling.style_base(base, color_mode, transparent=transparent)
         except Exception:
             pass
         project = QgsProject.instance()
@@ -260,7 +265,7 @@ class OsmQuick3DPlugin:
         if p.get("extrude_3d"):
             native3d.apply_base_slab(
                 base, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode))
-        return True, gpkg_failed
+        return base, gpkg_failed
 
     # ── main run ───────────────────────────────────────────────────────────
     def run_action(self, p):
@@ -371,13 +376,45 @@ class OsmQuick3DPlugin:
             native3d.apply_tree_3d(trees_layer)
 
         # Ground base: a recessed slab the city stands on, under everything.
+        base_layer = None
         if p.get("want_base"):
-            _, base_gpkg_failed = self._add_base_layer(
+            base_layer, base_gpkg_failed = self._add_base_layer(
                 p, area_utm, epsg, group, gpkg_path, gpkg_first)
             gpkg_failed = gpkg_failed or base_gpkg_failed
 
         if p["basemap"] is not None:
             self._move_basemap_bottom(p["basemap"])
+            try:
+                from qgis.core import QgsMapClippingRegion, QgsGeometry
+                canvas = self.iface.mapCanvas()
+                to_canvas = QgsCoordinateTransform(
+                    QgsCoordinateReferenceSystem.fromEpsgId(epsg),
+                    canvas.mapSettings().destinationCrs(), project,
+                )
+                
+                clip_geom = None
+                if base_layer is not None:
+                    feats = [f for f in base_layer.getFeatures()]
+                    if feats:
+                        clip_geom = feats[0].geometry()
+                if clip_geom is None:
+                    clip_geom = area_utm
+
+                canvas_geom = QgsGeometry(clip_geom)
+                canvas_geom.transform(to_canvas)
+                
+                clip_region = QgsMapClippingRegion(canvas_geom)
+                clip_region.setRestrictToLayers(True)
+                clip_region.setRestrictedLayers([p["basemap"]])
+                clip_region.setFeatureClip(QgsMapClippingRegion.ClipPainterOnly)
+                
+                settings = canvas.mapSettings()
+                settings.setClippingRegions([clip_region])
+                canvas.setMapSettings(settings)
+            except Exception as exc:
+                self.iface.messageBar().pushWarning(
+                    "OSM Quick 3D", f"Could not clip basemap: {exc}"
+                )
 
         try:
             canvas = self.iface.mapCanvas()

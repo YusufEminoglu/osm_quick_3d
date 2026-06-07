@@ -1,8 +1,15 @@
 # Changelog
 
-## [0.12.0] - 2026-06-08
+## [0.13.0] - 2026-06-08
 
-- Scrollable and compact UI dialog/dock, and 3D base slab rendering fixes (capping and Z-offset)
+- Implement visual clipping of basemap, base plinth capping, and 2D transparency
+
+## [0.13.0] - 2026-06-08
+
+- Visual Basemap Clipping: implemented automatic masking of the underlay basemap to the base plinth (or study area) using QgsMapClippingRegion on the mapSettings, clipping both 2D and 3D terrain renders cleanly
+- Solid base capping: forced capping of top/bottom and walls using explicit setRenderedFacade(3) and setExtrusionFaces(3)
+- 2D Base transparency: modified base styling to be transparent inside when a basemap is present, preventing the solid base fill from obscuring the clipped basemap under the buildings
+- Dock state preservation: persisted the transparency state via custom layer properties so live styling updates in the dock respect the basemap visibility
 
 ## [0.12.0] - 2026-06-08
 

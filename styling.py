@@ -318,13 +318,25 @@ def label_by_name(layer, size=8.0, color_hex="#3a4042", field="name"):
         return False
 
 
-def style_base(layer, mode=BUILDING_COLOR_FUNCTION):
-    """Subtle 2D ground fill, tinted to match the building colour ``mode``."""
+def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False):
+    """Subtle 2D ground fill, tinted to match the building colour ``mode``.
+
+    If ``transparent`` is True, the fill style is set to "no" (fully transparent)
+    so the draped underlay basemap is visible through the plinth.
+    """
     slab = base_color_hex(mode)
-    fill = _scale_hex(slab, 1.6)        # light tint of the slab colour
     outline = _scale_hex(slab, 1.25)
-    layer.setRenderer(QgsSingleSymbolRenderer(
-        _fill(fill, outline=outline, outline_w=0.2)))
+    if transparent:
+        symbol = QgsFillSymbol.createSimple({
+            "color": "0,0,0,0",
+            "outline_color": outline,
+            "outline_width": "0.2",
+            "style": "no",
+        })
+    else:
+        fill = _scale_hex(slab, 1.6)        # light tint of the slab colour
+        symbol = _fill(fill, outline=outline, outline_w=0.2)
+    layer.setRenderer(QgsSingleSymbolRenderer(symbol))
     layer.triggerRepaint()
 
 
