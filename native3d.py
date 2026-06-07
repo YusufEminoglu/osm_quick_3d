@@ -151,13 +151,12 @@ def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color
         return False
 
 
-def apply_base_slab(layer, depth=5.0, top_z=-0.01, color_hex="#5e7274"):
-    """Extrude the ground base as a recessed slab: top at ``top_z``, ``depth`` deep.
+def apply_base_slab(layer, depth=5.0, top_z=-0.15, color_hex="#5e7274"):
+    """Extrude the ground base as a recessed filled plinth clamped to the terrain.
 
-    The slab's top face sits at ``top_z`` (ground level, 0) and its base reaches
-    ``top_z - depth`` (e.g. -5 m), so the city visibly stands on a plinth. Uses the
-    3D symbol's data-defined Height (base altitude) property where available.
-    Defensive: returns False on builds without a usable 3D module.
+    The plinth's solid slab starts at `top_z - depth` relative to the terrain and
+    extrude up to `top_z` (e.g., -0.15m to avoid Z-fighting), following any terrain
+    elevation model natively.
     """
     try:
         from qgis._3d import QgsVectorLayer3DRenderer, QgsPolygon3DSymbol
@@ -170,11 +169,7 @@ def apply_base_slab(layer, depth=5.0, top_z=-0.01, color_hex="#5e7274"):
     except Exception:
         pass
     try:
-        symbol.setRenderedFacade(3)  # WallsAndRoofs
-    except Exception:
-        pass
-    try:
-        symbol.setExtrusionFaces(3)  # WallsAndRoofs
+        symbol.setRenderedFacade(3)  # Walls and roofs (creates a filled solid slab)
     except Exception:
         pass
     try:
@@ -207,11 +202,11 @@ def apply_base_slab(layer, depth=5.0, top_z=-0.01, color_hex="#5e7274"):
     except Exception:
         pass
 
-    # Absolute altitude so the base height is taken literally (not clamped to 0).
+    # Clamp to terrain so the plinth follows the terrain height model natively.
     for module in ("qgis.core", "qgis._3d"):
         try:
             mod = __import__(module, fromlist=["Qgs3DTypes"])
-            symbol.setAltitudeClamping(mod.Qgs3DTypes.AltClampAbsolute)
+            symbol.setAltitudeClamping(mod.Qgs3DTypes.AltClampTerrain)
             break
         except Exception:
             continue

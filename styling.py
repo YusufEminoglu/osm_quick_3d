@@ -51,6 +51,107 @@ GREEN_COLORS = {
     "pedestrian": ("#e3e1db", "#b5b3ad"),  # stone/paved light grey, darker outline
 }
 
+_BASE_NEUTRAL = "#5e7274"
+
+# ── Map Themes ──────────────────────────────────────────────────────────────
+THEMES = {
+    "default": {
+        "label": "Muted Planning (Default)",
+        "bg": "#ffffff",
+        "base": "#5e7274",
+        "roads_major": "#e1846f",
+        "roads_minor": "#eae5da",
+        "greens": "#a9c08a",
+        "water": "#a5c9eb",
+        "trees": "#6f9e5c",
+        "building_ramp": ("#e2e8ee", "#56657d"),
+        "building_colors": {
+            "residential": "#d8c3b1",
+            "commercial": "#b7c2d0",
+            "industrial": "#c6b9a4",
+            "civic": "#cdd6d2",
+            "worship": "#d8cfe2",
+            "other": "#cac5bf",
+        },
+    },
+    "cyber": {
+        "label": "Tokyo Cyber (Dark / Neon)",
+        "bg": "#0a0b10",
+        "base": "#121420",
+        "roads_major": "#ff0055",
+        "roads_minor": "#1a1d36",
+        "greens": "#082c2b",
+        "water": "#00ffcc",
+        "trees": "#00ff66",
+        "building_ramp": ("#1a1d36", "#00ffff"),
+        "building_colors": {
+            "residential": "#bc39fa",
+            "commercial": "#ff8800",
+            "industrial": "#ffdd00",
+            "civic": "#00aaff",
+            "worship": "#00ff66",
+            "other": "#ff007f",
+        },
+    },
+    "paper": {
+        "label": "Editorial Paper (Warm / Elegant)",
+        "bg": "#fdfbf7",
+        "base": "#e6dfd3",
+        "roads_major": "#7c5c43",
+        "roads_minor": "#eadecc",
+        "greens": "#c2c5aa",
+        "water": "#9ab8c2",
+        "trees": "#6b705c",
+        "building_ramp": ("#f4ebe1", "#6f4e37"),
+        "building_colors": {
+            "residential": "#ebd4c0",
+            "commercial": "#c4d1db",
+            "industrial": "#dbcfb8",
+            "civic": "#cfdcd5",
+            "worship": "#e8dfeb",
+            "other": "#dcd8d3",
+        },
+    },
+    "frost": {
+        "label": "Nordic Frost (Cool / Minimal)",
+        "bg": "#f5f7fa",
+        "base": "#d8dee9",
+        "roads_major": "#4c566a",
+        "roads_minor": "#e5e9f0",
+        "greens": "#a3be8c",
+        "water": "#88c0d0",
+        "trees": "#4c566a",
+        "building_ramp": ("#e5e9f0", "#5e81ac"),
+        "building_colors": {
+            "residential": "#d8dee9",
+            "commercial": "#81a1c1",
+            "industrial": "#4c566a",
+            "civic": "#88c0d0",
+            "worship": "#b48ead",
+            "other": "#e5e9f0",
+        },
+    },
+    "noir": {
+        "label": "Monochrome Noir (Sleek / High Contrast)",
+        "bg": "#1e1e1e",
+        "base": "#121212",
+        "roads_major": "#ffffff",
+        "roads_minor": "#2e2e2e",
+        "greens": "#262626",
+        "water": "#3a3a3a",
+        "trees": "#5c5c5c",
+        "building_ramp": ("#2a2a2a", "#e0e0e0"),
+        "building_colors": {
+            "residential": "#404040",
+            "commercial": "#808080",
+            "industrial": "#2a2a2a",
+            "civic": "#a0a0a0",
+            "worship": "#c0c0c0",
+            "other": "#606060",
+        },
+    },
+}
+
 # OSM tag values are emitted lower-cased by osm_download; lower() here is a
 # harmless safety net so the categories still match if that ever changes.
 BUILDING_CLASS_EXPR = (
@@ -140,22 +241,25 @@ def _scale_hex(value, factor):
     return "#%02x%02x%02x" % (int(r), int(g), int(b))
 
 
-_BASE_NEUTRAL = "#5e7274"
-
-
-def base_color_hex(mode=BUILDING_COLOR_FUNCTION) -> str:
+def base_color_hex(mode=BUILDING_COLOR_FUNCTION, theme="default") -> str:
     """The 3D ground-base slab colour, harmonised with the building colour mode.
 
     For a tinted ramp the base is a darkened tone of that tint, so the plinth and
     the city read as one palette; function/height keep a neutral slate.
     """
+    t = THEMES.get(theme, THEMES["default"])
+    if mode == "height":
+        return _scale_hex(t["building_ramp"][1], 0.72)
     if mode in _BUILDING_RAMPS:
         return _scale_hex(_BUILDING_RAMPS[mode][1], 0.72)
-    return _BASE_NEUTRAL
+    return t["base"]
 
 
-def building_base_color(mode=BUILDING_COLOR_FUNCTION) -> str:
+def building_base_color(mode=BUILDING_COLOR_FUNCTION, theme="default") -> str:
     """A single fallback hex color for the building color mode."""
+    t = THEMES.get(theme, THEMES["default"])
+    if mode == "height":
+        return t["building_ramp"][1]
     if mode in _BUILDING_RAMPS:
         return _BUILDING_RAMPS[mode][1]
     return "#cac5bf"
@@ -171,6 +275,8 @@ def _interpolate_color(c1_hex, c2_hex, factor):
     return "#%02x%02x%02x" % (r, g, b)
 
 
+_LAYER_HEIGHTS_CACHE = {}
+
 def get_breaks_and_colors(layer, lo_hex, hi_hex, classification="continuous"):
     """Calculate dynamic min, max, breaks, and category colors from actual building heights."""
     min_h = 3.0
@@ -178,27 +284,38 @@ def get_breaks_and_colors(layer, lo_hex, hi_hex, classification="continuous"):
     b = [9.0, 15.0, 21.0, 27.0]
 
     if layer is not None and layer.featureCount() > 0:
-        try:
-            heights = []
-            for feat in layer.getFeatures():
-                h = feat["height"]
-                if h is None or h <= 0:
-                    levels = feat["building_levels"]
-                    if levels is not None and levels > 0:
-                        h = levels * 3.0
+        layer_id = layer.id()
+        if layer_id in _LAYER_HEIGHTS_CACHE:
+            min_h, max_h, heights = _LAYER_HEIGHTS_CACHE[layer_id]
+        else:
+            try:
+                heights = []
+                for feat in layer.getFeatures():
+                    h = feat["height"]
+                    if h is None or h <= 0:
+                        levels = feat["building_levels"]
+                        if levels is not None and levels > 0:
+                            h = levels * 3.0
+                        else:
+                            h = 9.0
                     else:
-                        h = 9.0
-                else:
-                    h = float(h)
-                heights.append(h)
-            
-            if heights:
-                heights.sort()
-                min_h = heights[0]
-                max_h = heights[-1]
-                if max_h <= min_h:
-                    max_h = min_h + 10.0
+                        h = float(h)
+                    heights.append(h)
                 
+                if heights:
+                    heights.sort()
+                    min_h = heights[0]
+                    max_h = heights[-1]
+                    if max_h <= min_h:
+                        max_h = min_h + 10.0
+                    _LAYER_HEIGHTS_CACHE[layer_id] = (min_h, max_h, heights)
+                else:
+                    heights = []
+            except Exception:
+                heights = []
+
+        if heights:
+            try:
                 n = len(heights)
                 classification = str(classification).lower()
                 if classification == "quantile" and n >= 5:
@@ -210,8 +327,8 @@ def get_breaks_and_colors(layer, lo_hex, hi_hex, classification="continuous"):
                 else:
                     step = (max_h - min_h) / 5.0
                     b = [min_h + step, min_h + 2 * step, min_h + 3 * step, min_h + 4 * step]
-        except Exception:
-            pass
+            except Exception:
+                pass
 
     c1 = lo_hex
     c2 = _interpolate_color(lo_hex, hi_hex, 0.25)
@@ -222,7 +339,7 @@ def get_breaks_and_colors(layer, lo_hex, hi_hex, classification="continuous"):
     return min_h, max_h, b, [c1, c2, c3, c4, c5]
 
 
-def building_color_expression(mode=BUILDING_COLOR_FUNCTION, classification="continuous", layer=None) -> str:
+def building_color_expression(mode=BUILDING_COLOR_FUNCTION, classification="continuous", layer=None, theme="default") -> str:
     """A QGIS expression returning each building's colour for ``mode``.
 
     For ``function`` it wraps ``BUILDING_CLASS_EXPR`` into the OSM-use hex palette;
@@ -230,8 +347,12 @@ def building_color_expression(mode=BUILDING_COLOR_FUNCTION, classification="cont
     same expression drives the 2D fill and the native 3D diffuse colour, so the
     massing always matches the flat map.
     """
-    if mode in _BUILDING_RAMPS:
-        lo_hex, hi_hex = _BUILDING_RAMPS[mode]
+    t = THEMES.get(theme, THEMES["default"])
+    if mode in _BUILDING_RAMPS or mode == "height":
+        if mode == "height":
+            lo_hex, hi_hex = t["building_ramp"]
+        else:
+            lo_hex, hi_hex = _BUILDING_RAMPS[mode]
         classification = str(classification).lower()
         min_h, max_h, breaks, colors = get_breaks_and_colors(layer, lo_hex, hi_hex, classification)
         h = _BUILDING_HEIGHT_EXPR
@@ -253,18 +374,23 @@ def building_color_expression(mode=BUILDING_COLOR_FUNCTION, classification="cont
                 f" WHEN {h} <= {b4} THEN '{c4}'"
                 f" ELSE '{c5}' END"
             )
-    cases = " ".join(f"WHEN '{key}' THEN '{hexv}'" for key, hexv in BUILDING_COLORS.items())
-    return f"CASE ({BUILDING_CLASS_EXPR}) {cases} ELSE '{BUILDING_COLORS['other']}' END"
+    
+    theme_building_colors = t.get("building_colors", BUILDING_COLORS)
+    cases = " ".join(f"WHEN '{key}' THEN '{hexv}'" for key, hexv in theme_building_colors.items())
+    return f"CASE ({BUILDING_CLASS_EXPR}) {cases} ELSE '{theme_building_colors['other']}' END"
 
 
-def building_color_swatches(mode=BUILDING_COLOR_FUNCTION):
+def building_color_swatches(mode=BUILDING_COLOR_FUNCTION, theme="default"):
     """Hex stops representing ``mode`` for a dialog preview swatch.
 
     For ramp modes it's (light, deep); for ``function`` it's the OSM-use palette.
     """
+    t = THEMES.get(theme, THEMES["default"])
+    if mode == "height":
+        return list(t["building_ramp"])
     if mode in _BUILDING_RAMPS:
         return list(_BUILDING_RAMPS[mode])
-    return list(BUILDING_COLORS.values())
+    return list(t.get("building_colors", BUILDING_COLORS).values())
 
 
 # ── symbol factories ────────────────────────────────────────────────────────
@@ -301,15 +427,15 @@ def _categorized(expression, mapping_to_symbol):
 
 
 # ── per-layer styling ───────────────────────────────────────────────────────
-def style_buildings(layer, mode=BUILDING_COLOR_FUNCTION, classification="continuous"):
+def style_buildings(layer, mode=BUILDING_COLOR_FUNCTION, classification="continuous", theme="default"):
     """Style buildings by ``mode``: function categories or a soft height ramp.
 
     Ramp modes use one fill symbol whose colour is data-defined by the same
     expression the 3D massing uses, so 2D and 3D stay identical.
     """
-    if mode in _BUILDING_RAMPS:
+    if mode in _BUILDING_RAMPS or mode == "height":
         symbol = _fill("#cfd6dd")
-        expr = building_color_expression(mode, classification=classification, layer=layer)
+        expr = building_color_expression(mode, classification=classification, layer=layer, theme=theme)
         try:
             symbol.symbolLayer(0).setDataDefinedProperty(
                 QgsSymbolLayer.PropertyFillColor, QgsProperty.fromExpression(expr))
@@ -317,30 +443,50 @@ def style_buildings(layer, mode=BUILDING_COLOR_FUNCTION, classification="continu
             pass
         layer.setRenderer(QgsSingleSymbolRenderer(symbol))
     else:
-        mapping = {k: _fill(v) for k, v in BUILDING_COLORS.items()}
+        t = THEMES.get(theme, THEMES["default"])
+        theme_building_colors = t.get("building_colors", BUILDING_COLORS)
+        mapping = {k: _fill(v) for k, v in theme_building_colors.items()}
         layer.setRenderer(_categorized(BUILDING_CLASS_EXPR, mapping))
     layer.triggerRepaint()
 
 
-def style_roads(layer):
-    mapping = {k: _line(c, w, d) for k, (c, w, d) in ROAD_STYLE.items()}
+def style_roads(layer, theme="default"):
+    t = THEMES.get(theme, THEMES["default"])
+    major_color = t["roads_major"]
+    minor_color = t["roads_minor"]
+    mapping = {}
+    for k, (c, w, d) in ROAD_STYLE.items():
+        color = major_color if k in ("major", "primary", "secondary", "tertiary") else minor_color
+        mapping[k] = _line(color, w, d)
     layer.setRenderer(_categorized(ROAD_CLASS_EXPR, mapping))
     layer.triggerRepaint()
 
 
-def style_greens(layer):
-    mapping = {k: _fill(color, outline=out_color, outline_w=0.12) for k, (color, out_color) in GREEN_COLORS.items()}
+def style_greens(layer, theme="default"):
+    t = THEMES.get(theme, THEMES["default"])
+    greens_color = t["greens"]
+    mapping = {}
+    for k, (color, out_color) in GREEN_COLORS.items():
+        if k in ("park", "forest", "green", "pitch", "cemetery"):
+            col = greens_color
+            out = _scale_hex(greens_color, 0.8)
+        else:
+            col = color
+            out = out_color
+        mapping[k] = _fill(col, outline=out, outline_w=0.12)
     layer.setRenderer(_categorized(GREEN_CLASS_EXPR, mapping))
     layer.triggerRepaint()
 
 
-def style_water(layer):
-    layer.setRenderer(QgsSingleSymbolRenderer(_line("#6fa8c7", 0.9)))
+def style_water(layer, theme="default"):
+    t = THEMES.get(theme, THEMES["default"])
+    layer.setRenderer(QgsSingleSymbolRenderer(_line(t["water"], 0.9)))
     layer.triggerRepaint()
 
 
-def style_waterareas(layer):
-    layer.setRenderer(QgsSingleSymbolRenderer(_fill("#a5c9eb", outline="#7298ba", outline_w=0.12)))
+def style_waterareas(layer, theme="default"):
+    t = THEMES.get(theme, THEMES["default"])
+    layer.setRenderer(QgsSingleSymbolRenderer(_fill(t["water"], outline=_scale_hex(t["water"], 0.8), outline_w=0.12)))
     layer.triggerRepaint()
 
 
@@ -349,8 +495,9 @@ def style_bikelanes(layer):
     layer.triggerRepaint()
 
 
-def style_trees(layer):
-    layer.setRenderer(QgsSingleSymbolRenderer(_marker("#6f9e5c", 1.8)))
+def style_trees(layer, theme="default"):
+    t = THEMES.get(theme, THEMES["default"])
+    layer.setRenderer(QgsSingleSymbolRenderer(_marker(t["trees"], 1.8)))
     layer.triggerRepaint()
 
 
@@ -394,13 +541,13 @@ def label_by_name(layer, size=8.0, color_hex="#3a4042", field="name"):
         return False
 
 
-def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_hex="#ffffff"):
+def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_hex="#ffffff", theme="default"):
     """Subtle 2D ground fill, tinted to match the building colour ``mode``.
 
     If ``transparent`` is True, we use QgsInvertedPolygonRenderer to mask out the
     draped basemap outside the study area with the map canvas background color.
     """
-    slab = base_color_hex(mode)
+    slab = base_color_hex(mode, theme=theme)
     outline = _scale_hex(slab, 1.25)
     try:
         from qgis.PyQt.QtGui import QPainter

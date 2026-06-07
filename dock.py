@@ -68,85 +68,125 @@ class PluginDockWidget(QDockWidget):
         
     _QSS = """
     QDockWidget {
-        background: #eef1f2;
+        background-color: #f5f6f7;
+    }
+    QScrollArea {
+        background-color: transparent;
+        border: none;
     }
     QGroupBox {
-        font-weight: 600;
+        font-weight: bold;
         font-size: 11px;
-        color: #34474a;
-        border: 1px solid #e0e5e6;
-        border-radius: 8px;
+        color: #2c3e50;
+        border: 1px solid #e2e8f0;
+        border-left: 4px solid #3f8079;
+        background-color: #ffffff;
         margin-top: 10px;
-        padding: 8px;
-        background: #ffffff;
+        padding: 12px 10px 10px 10px;
+        border-radius: 6px;
     }
     QGroupBox::title {
         subcontrol-origin: margin;
         subcontrol-position: top left;
         left: 8px;
-        top: 2px;
+        top: -6px;
         padding: 0 4px;
-        color: #5d7174;
+        color: #3f8079;
         background: transparent;
     }
-    QLabel { color: #3c4749; background: transparent; font-size: 11px; }
-    QCheckBox { spacing: 6px; padding: 2px 0; color: #34474a; background: transparent; font-size: 11px; }
-    QCheckBox::indicator { width: 14px; height: 14px; }
+    QLabel { 
+        color: #4a5568; 
+        font-size: 11px; 
+        font-weight: 500;
+        background: transparent;
+    }
+    QCheckBox { 
+        spacing: 8px; 
+        padding: 4px 0; 
+        color: #2d3748; 
+        background: transparent; 
+        font-size: 11px; 
+    }
+    QCheckBox::indicator { 
+        width: 15px; 
+        height: 15px; 
+        border-radius: 4px;
+        border: 1px solid #cbd5e0;
+        background-color: #ffffff;
+    }
     QComboBox, QDoubleSpinBox {
-        border: 1px solid #d2d9da;
+        border: 1px solid #cbd5e0;
         border-radius: 6px;
-        padding: 3px 5px;
-        background: #fbfcfc;
-        min-height: 18px;
+        padding: 4px 8px;
+        background: #ffffff;
+        min-height: 22px;
         font-size: 11px;
+        color: #2d3748;
     }
-    QComboBox:hover, QDoubleSpinBox:hover { border-color: #9cc3bf; }
-    QComboBox:focus, QDoubleSpinBox:focus { border-color: #3f8079; background: #ffffff; }
+    QComboBox:hover, QDoubleSpinBox:hover { 
+        border-color: #a0aec0; 
+    }
+    QComboBox:focus, QDoubleSpinBox:focus { 
+        border-color: #3f8079; 
+        background: #ffffff; 
+    }
     QPushButton {
-        border-radius: 6px; padding: 4px 10px;
-        background: #eef1f2; border: 1px solid #d2d9da; color: #34474a;
+        border-radius: 6px; 
+        padding: 6px 14px;
+        background-color: #ffffff; 
+        border: 1px solid #cbd5e0; 
+        color: #4a5568;
         font-size: 11px;
+        font-weight: bold;
     }
-    QPushButton:hover { background: #e4e9ea; }
-    
+    QPushButton:hover { 
+        background-color: #edf2f7; 
+        color: #2d3748;
+        border-color: #a0aec0;
+    }
+    QPushButton:pressed {
+        background-color: #cbd5e0;
+    }
     QTabWidget::pane {
-        border: 0px;
+        border: none;
         background: transparent;
     }
     QTabBar::tab {
-        background: #e4e9ea;
-        color: #5d7174;
-        border: 1px solid #d2d9da;
+        background: #e2e8f0;
+        color: #718096;
+        border: 1px solid #cbd5e0;
         border-bottom-color: none;
         border-top-left-radius: 6px;
         border-top-right-radius: 6px;
-        padding: 5px 10px;
+        padding: 6px 16px;
         font-size: 11px;
         font-weight: bold;
+        margin-right: 2px;
     }
     QTabBar::tab:selected {
         background: #ffffff;
         color: #3f8079;
-        border-color: #e0e5e6;
+        border-color: #cbd5e0;
         border-bottom: 2px solid #3f8079;
     }
     QTabBar::tab:hover {
-        background: #ebf0f1;
+        background: #edf2f7;
     }
     QSlider::groove:horizontal {
         height: 6px;
-        background: #e0e5e6;
+        background: #e2e8f0;
         border-radius: 3px;
     }
     QSlider::handle:horizontal {
         background: #3f8079;
         width: 14px;
+        height: 14px;
         margin-top: -4px;
         margin-bottom: -4px;
         border-radius: 7px;
     }
     QSlider::handle:horizontal:hover {
-        background: #4fa095;
+        background: #2d615b;
     }
     """
 
@@ -179,6 +219,16 @@ class PluginDockWidget(QDockWidget):
         target_layout.addWidget(self.group_combo, 1)
         target_layout.addWidget(self.refresh_btn)
         root.addWidget(target_box)
+
+        # Map Theme Selection
+        theme_box = QGroupBox("Map theme")
+        theme_layout = QHBoxLayout(theme_box)
+        self.theme_combo = QComboBox()
+        for key, val in styling.THEMES.items():
+            self.theme_combo.addItem(val["label"], key)
+        self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
+        theme_layout.addWidget(self.theme_combo, 1)
+        root.addWidget(theme_box)
 
         # Tab Widget
         self.tab_widget = QTabWidget()
@@ -244,7 +294,7 @@ class PluginDockWidget(QDockWidget):
         adv_form.addRow("Map resolution (3D):", self.map_resolution)
 
         tab1_layout.addWidget(adv_box)
-        self.tab_widget.addTab(tab1, "Buildings & Base")
+        self.tab_widget.addTab(tab1, "🏢 Buildings & Base")
 
         # Tab 2: Advanced Styling (Other Layers)
         tab2 = QWidget()
@@ -302,7 +352,7 @@ class PluginDockWidget(QDockWidget):
 
         tab2_layout.addWidget(layer_style_box)
         tab2_layout.addStretch(1)
-        self.tab_widget.addTab(tab2, "Layer Styling")
+        self.tab_widget.addTab(tab2, "🎨 Layer Styling")
 
         root.addWidget(self.tab_widget)
         root.addStretch(1)
@@ -331,6 +381,7 @@ class PluginDockWidget(QDockWidget):
             self.cb_labels.setEnabled(False)
             self.cb_base.setEnabled(False)
             self.tab_widget.setEnabled(False)
+            self.theme_combo.setEnabled(False)
             return
 
         self.height_scale.setEnabled(True)
@@ -338,6 +389,7 @@ class PluginDockWidget(QDockWidget):
         self.cb_labels.setEnabled(True)
         self.cb_base.setEnabled(True)
         self.tab_widget.setEnabled(True)
+        self.theme_combo.setEnabled(True)
 
         # Read current state from the layers and configure UI
         layers = self._get_layers(group_node)
@@ -350,6 +402,18 @@ class PluginDockWidget(QDockWidget):
         self.water_color.blockSignals(True)
         self.trees_color.blockSignals(True)
         self.trees_size.blockSignals(True)
+        self.theme_combo.blockSignals(True)
+
+        # Try to detect theme from custom properties of layer
+        detected_theme = "default"
+        for key, layer in layers.items():
+            val = layer.customProperty("osm_quick_3d/theme")
+            if val:
+                detected_theme = str(val)
+                break
+        tidx = self.theme_combo.findData(detected_theme)
+        if tidx >= 0:
+            self.theme_combo.setCurrentIndex(tidx)
 
         buildings = layers.get("buildings")
         if buildings:
@@ -423,6 +487,7 @@ class PluginDockWidget(QDockWidget):
         self.water_color.blockSignals(False)
         self.trees_color.blockSignals(False)
         self.trees_size.blockSignals(False)
+        self.theme_combo.blockSignals(False)
 
         self._update_color_preview()
 
@@ -454,7 +519,8 @@ class PluginDockWidget(QDockWidget):
         return layers
 
     def _update_color_preview(self):
-        stops = styling.building_color_swatches(self.building_color.currentData())
+        theme_key = self.theme_combo.currentData() or "default"
+        stops = styling.building_color_swatches(self.building_color.currentData(), theme=theme_key)
         if not stops:
             return
         if len(stops) == 1:
@@ -466,125 +532,176 @@ class PluginDockWidget(QDockWidget):
             f"background:qlineargradient(x1:0,y1:0,x2:1,y2:0,{parts});}}"
         )
 
+    def _on_theme_changed(self):
+        theme_key = self.theme_combo.currentData()
+        if not theme_key:
+            return
+            
+        t_data = styling.THEMES.get(theme_key, styling.THEMES["default"])
+        
+        # Block signals to prevent redundant layers updates during widget changes
+        self.major_roads_color.blockSignals(True)
+        self.minor_roads_color.blockSignals(True)
+        self.greens_color.blockSignals(True)
+        self.water_color.blockSignals(True)
+        self.trees_color.blockSignals(True)
+        
+        self.major_roads_color.setColor(QColor(t_data["roads_major"]))
+        self.minor_roads_color.setColor(QColor(t_data["roads_minor"]))
+        self.greens_color.setColor(QColor(t_data["greens"]))
+        self.water_color.setColor(QColor(t_data["water"]))
+        self.trees_color.setColor(QColor(t_data["trees"]))
+        
+        self.major_roads_color.blockSignals(False)
+        self.minor_roads_color.blockSignals(False)
+        self.greens_color.blockSignals(False)
+        self.water_color.blockSignals(False)
+        self.trees_color.blockSignals(False)
+        
+        # Set canvas color
+        self.iface.mapCanvas().setCanvasColor(QColor(t_data["bg"]))
+        
+        # Save theme custom property to the layers
+        group_node = self.group_combo.currentData()
+        if group_node:
+            for child in group_node.children():
+                if isinstance(child, QgsLayerTreeLayer):
+                    layer = child.layer()
+                    if layer:
+                        layer.setCustomProperty("osm_quick_3d/theme", theme_key)
+        
+        self._update_color_preview()
+        self._apply_changes()
+        self._apply_advanced_changes()
+
     def _apply_changes(self):
         group_node = self.group_combo.currentData()
         if not group_node:
             return
 
-        layers = self._get_layers(group_node)
-        buildings = layers.get("buildings")
-        roads = layers.get("roads")
-        base = layers.get("base")
-        base_3d = layers.get("base_3d")
+        canvas = self.iface.mapCanvas()
+        canvas.freeze(True)
+        try:
+            layers = self._get_layers(group_node)
+            buildings = layers.get("buildings")
+            roads = layers.get("roads")
+            base = layers.get("base")
+            base_3d = layers.get("base_3d")
 
-        color_mode = self.building_color.currentData()
-        classification = self.classification.currentData()
-        scale = self.height_scale.value()
-        want_labels = self.cb_labels.isChecked()
-        want_base = self.cb_base.isChecked()
+            theme_key = self.theme_combo.currentData() or "default"
+            color_mode = self.building_color.currentData()
+            classification = self.classification.currentData()
+            scale = self.height_scale.value()
+            want_labels = self.cb_labels.isChecked()
+            want_base = self.cb_base.isChecked()
 
-        if buildings:
-            # Update 2D styling
-            styling.style_buildings(buildings, color_mode, classification=classification)
-            
-            # Update 3D extrusion
-            native3d.apply_building_extrusion(
-                buildings,
-                color_hex=styling.building_base_color(color_mode),
-                height_scale=scale,
-                color_expr=styling.building_color_expression(
-                    color_mode, classification=classification, layer=buildings)
-            )
+            if buildings:
+                # Update 2D styling
+                styling.style_buildings(buildings, color_mode, classification=classification, theme=theme_key)
+                
+                # Update 3D extrusion
+                native3d.apply_building_extrusion(
+                    buildings,
+                    color_hex=styling.building_base_color(color_mode, theme=theme_key),
+                    height_scale=scale,
+                    color_expr=styling.building_color_expression(
+                        color_mode, classification=classification, layer=buildings, theme=theme_key)
+                )
 
-            # Update Labels
-            if want_labels:
-                styling.label_by_name(buildings, size=8.0)
+                # Update Labels
+                if want_labels:
+                    styling.label_by_name(buildings, size=8.0)
+                else:
+                    buildings.setLabeling(None)
+                    buildings.setLabelsEnabled(False)
+                    buildings.triggerRepaint()
+
+            if roads:
+                if want_labels:
+                    styling.label_by_name(roads, size=7.5)
+                else:
+                    roads.setLabeling(None)
+                    roads.setLabelsEnabled(False)
+                    roads.triggerRepaint()
+
+            if base:
+                transparent_val = base.customProperty("osm_quick_3d/transparent")
+                transparent = str(transparent_val).strip().lower() in ("true", "1", "yes", "on")
+                bg_color_hex = canvas.canvasColor().name()
+                styling.style_base(base, color_mode, transparent=transparent, bg_color_hex=bg_color_hex, theme=theme_key)
+                
+            if want_base:
+                if not base_3d and base:
+                    try:
+                        base_3d = base.clone()
+                        base_3d.setName("OSM Base 3D")
+                        styling.style_base_3d_2d(base_3d)
+                        QgsProject.instance().addMapLayer(base_3d, False)
+                        group_node.insertLayer(len(group_node.children()), base_3d)
+                    except Exception:
+                        pass
+                if base_3d:
+                    native3d.apply_base_slab(
+                        base_3d, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode, theme=theme_key))
             else:
-                buildings.setLabeling(None)
-                buildings.setLabelsEnabled(False)
-                buildings.triggerRepaint()
-
-        if roads:
-            if want_labels:
-                styling.label_by_name(roads, size=7.5)
-            else:
-                roads.setLabeling(None)
-                roads.setLabelsEnabled(False)
-                roads.triggerRepaint()
-
-        if base:
-            transparent_val = base.customProperty("osm_quick_3d/transparent")
-            transparent = str(transparent_val).strip().lower() in ("true", "1", "yes", "on")
-            bg_color_hex = self.iface.mapCanvas().canvasColor().name()
-            styling.style_base(base, color_mode, transparent=transparent, bg_color_hex=bg_color_hex)
-            
-        if want_base:
-            if not base_3d and base:
-                try:
-                    base_3d = base.clone()
-                    base_3d.setName("OSM Base 3D")
-                    styling.style_base_3d_2d(base_3d)
-                    QgsProject.instance().addMapLayer(base_3d, False)
-                    group_node.insertLayer(len(group_node.children()), base_3d)
-                except Exception:
-                    pass
-            if base_3d:
-                native3d.apply_base_slab(
-                    base_3d, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode))
-        else:
-            if base_3d:
-                base_3d.setRenderer3D(None)
-                base_3d.triggerRepaint()
-
-        self.iface.mapCanvas().refresh()
+                if base_3d:
+                    base_3d.setRenderer3D(None)
+                    base_3d.triggerRepaint()
+        finally:
+            canvas.freeze(False)
+            canvas.refresh()
 
     def _apply_advanced_changes(self):
         group_node = self.group_combo.currentData()
         if not group_node:
             return
 
-        layers = self._get_layers(group_node)
-        buildings = layers.get("buildings")
-        roads = layers.get("roads")
-        greens = layers.get("greens")
-        waterareas = layers.get("waterareas")
-        waterlines = layers.get("waterlines")
-        trees = layers.get("trees")
+        canvas = self.iface.mapCanvas()
+        canvas.freeze(True)
+        try:
+            layers = self._get_layers(group_node)
+            buildings = layers.get("buildings")
+            roads = layers.get("roads")
+            greens = layers.get("greens")
+            waterareas = layers.get("waterareas")
+            waterlines = layers.get("waterlines")
+            trees = layers.get("trees")
 
-        if buildings:
-            opacity_val = self.building_opacity.value() / 100.0
-            buildings.setOpacity(opacity_val)
-            buildings.triggerRepaint()
+            if buildings:
+                opacity_val = self.building_opacity.value() / 100.0
+                buildings.setOpacity(opacity_val)
+                buildings.triggerRepaint()
 
-        if roads:
-            major_color = self.major_roads_color.color().name()
-            for cat in ("major", "primary", "secondary", "tertiary"):
-                styling.set_layer_color(roads, major_color, cat)
-            
-            minor_color = self.minor_roads_color.color().name()
-            for cat in ("residential", "service", "foot", "other"):
-                styling.set_layer_color(roads, minor_color, cat)
+            if roads:
+                major_color = self.major_roads_color.color().name()
+                for cat in ("major", "primary", "secondary", "tertiary"):
+                    styling.set_layer_color(roads, major_color, cat)
+                
+                minor_color = self.minor_roads_color.color().name()
+                for cat in ("residential", "service", "foot", "other"):
+                    styling.set_layer_color(roads, minor_color, cat)
 
-        if greens:
-            greens_color = self.greens_color.color().name()
-            for cat in ("park", "forest", "green"):
-                styling.set_layer_color(greens, greens_color, cat)
+            if greens:
+                greens_color = self.greens_color.color().name()
+                for cat in ("park", "forest", "green"):
+                    styling.set_layer_color(greens, greens_color, cat)
 
-        if waterareas:
-            styling.set_layer_color(waterareas, self.water_color.color().name())
-        if waterlines:
-            styling.set_layer_color(waterlines, self.water_color.color().name())
+            if waterareas:
+                styling.set_layer_color(waterareas, self.water_color.color().name())
+            if waterlines:
+                styling.set_layer_color(waterlines, self.water_color.color().name())
 
-        if trees:
-            trees_color = self.trees_color.color().name()
-            styling.set_layer_color(trees, trees_color)
-            styling.set_trees_size(trees, self.trees_size.value())
-            try:
-                native3d.apply_tree_3d(trees, color_hex=trees_color)
-            except Exception:
-                pass
-
-        self.iface.mapCanvas().refresh()
+            if trees:
+                trees_color = self.trees_color.color().name()
+                styling.set_layer_color(trees, trees_color)
+                styling.set_trees_size(trees, self.trees_size.value())
+                try:
+                    native3d.apply_tree_3d(trees, color_hex=trees_color)
+                except Exception:
+                    pass
+        finally:
+            canvas.freeze(False)
+            canvas.refresh()
 
     def _apply_resolution(self):
         res = self.map_resolution.currentData()

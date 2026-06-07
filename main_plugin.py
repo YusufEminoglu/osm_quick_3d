@@ -149,19 +149,20 @@ class OsmQuick3DPlugin:
 
         color_mode = p.get("building_color", styling.BUILDING_COLOR_FUNCTION)
         classification = p.get("classification", "continuous")
+        theme = p.get("theme", "default")
         return [
-            ("greens", p["want_greens"], styling.style_greens),
-            ("waterareas", p["want_water"], styling.style_waterareas),
-            ("waterlines", p["want_water"], styling.style_water),
+            ("greens", p["want_greens"], lambda layer: styling.style_greens(layer, theme=theme)),
+            ("waterareas", p["want_water"], lambda layer: styling.style_waterareas(layer, theme=theme)),
+            ("waterlines", p["want_water"], lambda layer: styling.style_water(layer, theme=theme)),
             ("bikelanes", p["want_roads"], styling.style_bikelanes),
-            ("roads", p["want_roads"], styling.style_roads),
-            ("trees", p["want_trees"], styling.style_trees),
+            ("roads", p["want_roads"], lambda layer: styling.style_roads(layer, theme=theme)),
+            ("trees", p["want_trees"], lambda layer: styling.style_trees(layer, theme=theme)),
             ("busstops", p["want_furniture"], points("#c7976a", 2.0)),
             ("benches", p["want_furniture"], points("#a98c6a", 1.6)),
             ("lights", p["want_furniture"], points("#d8c98a", 1.6)),
             ("trashbins", p["want_furniture"], points("#8a9a8a", 1.4)),
             ("buildings", p["want_buildings"],
-             lambda layer: styling.style_buildings(layer, color_mode, classification=classification)),
+             lambda layer: styling.style_buildings(layer, color_mode, classification=classification, theme=theme)),
         ]
 
     def _ask_gpkg_path(self):
@@ -255,6 +256,7 @@ class OsmQuick3DPlugin:
             else:
                 gpkg_failed = True
         color_mode = p.get("building_color", styling.BUILDING_COLOR_FUNCTION)
+        theme = p.get("theme", "default")
         transparent = p.get("basemap") is not None
         try:
             base.setCustomProperty("osm_quick_3d/transparent", transparent)
@@ -262,7 +264,7 @@ class OsmQuick3DPlugin:
             pass
         try:
             bg_color_hex = self.iface.mapCanvas().canvasColor().name()
-            styling.style_base(base, color_mode, transparent=transparent, bg_color_hex=bg_color_hex)
+            styling.style_base(base, color_mode, transparent=transparent, bg_color_hex=bg_color_hex, theme=theme)
         except Exception:
             pass
         project = QgsProject.instance()
@@ -284,11 +286,11 @@ class OsmQuick3DPlugin:
                 else:
                     project.addMapLayer(base_3d)
                 native3d.apply_base_slab(
-                    base_3d, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode))
+                    base_3d, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode, theme=theme))
             except Exception:
                 # Fallback to main base layer if clone fails
                 native3d.apply_base_slab(
-                    base, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode))
+                    base, depth=BASE_DEPTH_M, color_hex=styling.base_color_hex(color_mode, theme=theme))
         return base, gpkg_failed
 
     # ── main run ───────────────────────────────────────────────────────────
@@ -335,93 +337,107 @@ class OsmQuick3DPlugin:
 
         project = QgsProject.instance()
         group = self._make_group(epsg)
-        added, total, buildings_layer, trees_layer = [], 0, None, None
-        gpkg_first, gpkg_failed = True, False
-        for key, wanted, style_fn in self._layer_specs(p):
-            if not wanted:
-                continue
-            layer = result.get(key)
-            if layer is None or layer.featureCount() == 0:
-                continue
-            # Persist to GeoPackage first (write the raw memory layer, then reload
-            # and style the durable copy), so closing the project doesn't lose it.
-            if gpkg_path is not None:
-                loaded, err = self._persist_to_gpkg(layer, key, gpkg_path, gpkg_first)
-                if loaded is not None:
-                    layer = loaded
-                    gpkg_first = False
+        
+        # Freeze the map canvas during layer generation and styling to prevent intermediate redraw lags
+        canvas = self.iface.mapCanvas()
+        canvas.freeze(True)
+        
+        try:
+            # Apply theme background color to QGIS map canvas
+            theme = p.get("theme", "default")
+            t_data = styling.THEMES.get(theme, styling.THEMES["default"])
+            from qgis.PyQt.QtGui import QColor
+            canvas.setCanvasColor(QColor(t_data["bg"]))
+            
+            added, total, buildings_layer, trees_layer = [], 0, None, None
+            gpkg_first, gpkg_failed = True, False
+            for key, wanted, style_fn in self._layer_specs(p):
+                if not wanted:
+                    continue
+                layer = result.get(key)
+                if layer is None or layer.featureCount() == 0:
+                    continue
+                # Persist to GeoPackage first (write the raw memory layer, then reload
+                # and style the durable copy), so closing the project doesn't lose it.
+                if gpkg_path is not None:
+                    loaded, err = self._persist_to_gpkg(layer, key, gpkg_path, gpkg_first)
+                    if loaded is not None:
+                        layer = loaded
+                        gpkg_first = False
+                    else:
+                        gpkg_failed = True
+                try:
+                    style_fn(layer)
+                except Exception:
+                    pass
+                if group is not None:
+                    # addToLegend=False, then insert at the top of our group so the
+                    # spec's bottom-to-top order ends with buildings drawn on top.
+                    project.addMapLayer(layer, False)
+                    group.insertLayer(0, layer)
                 else:
-                    gpkg_failed = True
+                    project.addMapLayer(layer)
+                total += layer.featureCount()
+                added.append(f"{layer.featureCount()} {key}")
+                # Optional name labels for the layers that carry a name field.
+                if p.get("want_labels") and key in ("buildings", "roads"):
+                    size = 8.0 if key == "buildings" else 7.5
+                    try:
+                        styling.label_by_name(layer, size=size)
+                    except Exception:
+                        pass
+                if key == "buildings":
+                    buildings_layer = layer
+                elif key == "trees":
+                    trees_layer = layer
+
+            if not added:
+                self._error("No result", "No OSM features found in the selected layers for this area.")
+                self._set_status("0 features.", error=True)
+                if group is not None:
+                    try:
+                        QgsProject.instance().layerTreeRoot().removeChildNode(group)
+                    except Exception:
+                        pass
+                return
+
+            extruded = False
+            if p["extrude_3d"] and buildings_layer is not None:
+                extruded = native3d.apply_building_extrusion(
+                    buildings_layer,
+                    color_hex=styling.building_base_color(p.get("building_color", styling.BUILDING_COLOR_FUNCTION), theme=theme),
+                    height_scale=p.get("height_scale", 1.0),
+                    color_expr=styling.building_color_expression(
+                        p.get("building_color", styling.BUILDING_COLOR_FUNCTION),
+                        classification=p.get("classification", "continuous"),
+                        layer=buildings_layer,
+                        theme=theme),
+                )
+            # Tree points get a matching 3D pass (green/theme canopies) when 3D is on.
+            if p["extrude_3d"] and trees_layer is not None:
+                native3d.apply_tree_3d(trees_layer, color_hex=t_data["trees"])
+
+            # Ground base: a recessed slab the city stands on, under everything.
+            base_layer = None
+            if p.get("want_base"):
+                base_layer, base_gpkg_failed = self._add_base_layer(
+                    p, area_utm, epsg, group, gpkg_path, gpkg_first)
+                gpkg_failed = gpkg_failed or base_gpkg_failed
+
+            if p["basemap"] is not None:
+                self._setup_basemap_masking(p["basemap"], group)
+
             try:
-                style_fn(layer)
+                to_canvas = QgsCoordinateTransform(
+                    QgsCoordinateReferenceSystem.fromEpsgId(epsg),
+                    canvas.mapSettings().destinationCrs(), project,
+                )
+                canvas.setExtent(to_canvas.transformBoundingBox(area_utm.boundingBox()))
             except Exception:
                 pass
-            if group is not None:
-                # addToLegend=False, then insert at the top of our group so the
-                # spec's bottom-to-top order ends with buildings drawn on top.
-                project.addMapLayer(layer, False)
-                group.insertLayer(0, layer)
-            else:
-                project.addMapLayer(layer)
-            total += layer.featureCount()
-            added.append(f"{layer.featureCount()} {key}")
-            # Optional name labels for the layers that carry a name field.
-            if p.get("want_labels") and key in ("buildings", "roads"):
-                size = 8.0 if key == "buildings" else 7.5
-                try:
-                    styling.label_by_name(layer, size=size)
-                except Exception:
-                    pass
-            if key == "buildings":
-                buildings_layer = layer
-            elif key == "trees":
-                trees_layer = layer
-
-        if not added:
-            self._error("No result", "No OSM features found in the selected layers for this area.")
-            self._set_status("0 features.", error=True)
-            if group is not None:
-                try:
-                    QgsProject.instance().layerTreeRoot().removeChildNode(group)
-                except Exception:
-                    pass
-            return
-
-        extruded = False
-        if p["extrude_3d"] and buildings_layer is not None:
-            extruded = native3d.apply_building_extrusion(
-                buildings_layer,
-                color_hex=styling.building_base_color(p.get("building_color", styling.BUILDING_COLOR_FUNCTION)),
-                height_scale=p.get("height_scale", 1.0),
-                color_expr=styling.building_color_expression(
-                    p.get("building_color", styling.BUILDING_COLOR_FUNCTION),
-                    classification=p.get("classification", "continuous"),
-                    layer=buildings_layer),
-            )
-        # Tree points get a matching 3D pass (green canopies) when 3D is on.
-        if p["extrude_3d"] and trees_layer is not None:
-            native3d.apply_tree_3d(trees_layer)
-
-        # Ground base: a recessed slab the city stands on, under everything.
-        base_layer = None
-        if p.get("want_base"):
-            base_layer, base_gpkg_failed = self._add_base_layer(
-                p, area_utm, epsg, group, gpkg_path, gpkg_first)
-            gpkg_failed = gpkg_failed or base_gpkg_failed
-
-        if p["basemap"] is not None:
-            self._setup_basemap_masking(p["basemap"], group)
-
-        try:
-            canvas = self.iface.mapCanvas()
-            to_canvas = QgsCoordinateTransform(
-                QgsCoordinateReferenceSystem.fromEpsgId(epsg),
-                canvas.mapSettings().destinationCrs(), project,
-            )
-            canvas.setExtent(to_canvas.transformBoundingBox(area_utm.boundingBox()))
+        finally:
+            canvas.freeze(False)
             canvas.refresh()
-        except Exception:
-            pass
 
         opened_3d = native3d.open_3d_view(self.iface, resolution=p.get("map_resolution", 1024)) if p["open_3d"] else False
         

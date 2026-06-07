@@ -41,6 +41,7 @@ from .styling import (
     BUILDING_COLOR_FUNCTION,
     BUILDING_COLOR_MODES,
     building_color_swatches,
+    THEMES,
 )
 
 _S = "osm_quick_3d"
@@ -266,6 +267,12 @@ class PluginDialog(QDialog):
         )
         form.addRow("Height exaggeration:", self.height_scale)
 
+        self.theme_combo = QComboBox()
+        for key, val in THEMES.items():
+            self.theme_combo.addItem(val["label"], key)
+        self.theme_combo.setToolTip("Select the overall map color theme.")
+        form.addRow("Map theme:", self.theme_combo)
+
         self.building_color = QComboBox()
         for value, label in BUILDING_COLOR_MODES:
             self.building_color.addItem(label, value)
@@ -287,6 +294,7 @@ class PluginDialog(QDialog):
         self.color_preview.setFixedHeight(14)
         self.color_preview.setToolTip("Preview of the selected building-colour ramp (low → tall).")
         self.building_color.currentIndexChanged.connect(self._update_color_preview)
+        self.theme_combo.currentIndexChanged.connect(self._update_color_preview)
         form.addRow("", self.color_preview)
 
         self.cb_base = QCheckBox("Add ground base (recessed −5 m slab, +5 m buffer)")
@@ -355,7 +363,8 @@ class PluginDialog(QDialog):
 
     def _update_color_preview(self):
         """Paint the preview swatch as a left-to-right gradient of the mode's stops."""
-        stops = building_color_swatches(self.building_color.currentData())
+        theme_key = self.theme_combo.currentData() or "default"
+        stops = building_color_swatches(self.building_color.currentData(), theme=theme_key)
         if not stops:
             return
         if len(stops) == 1:
@@ -376,6 +385,7 @@ class PluginDialog(QDialog):
             "want_buildings": self.cb_buildings.isChecked(),
             "extrude_3d": self.cb_extrude.isChecked() and self.cb_buildings.isChecked(),
             "height_scale": self.height_scale.value(),
+            "theme": self.theme_combo.currentData(),
             "building_color": self.building_color.currentData(),
             "classification": self.classification.currentData(),
             "want_base": self.cb_base.isChecked(),
@@ -405,6 +415,9 @@ class PluginDialog(QDialog):
         cidx = self.building_color.findData(s.value(f"{_S}/building_color", BUILDING_COLOR_FUNCTION))
         if cidx >= 0:
             self.building_color.setCurrentIndex(cidx)
+        tidx = self.theme_combo.findData(s.value(f"{_S}/theme", "default"))
+        if tidx >= 0:
+            self.theme_combo.setCurrentIndex(tidx)
         try:
             self.max_km2.setValue(float(s.value(f"{_S}/max_km2", 6.0)))
         except (TypeError, ValueError):
@@ -449,6 +462,7 @@ class PluginDialog(QDialog):
         s.setValue(f"{_S}/area_source", p["area_source"])
         s.setValue(f"{_S}/shape", p["shape"])
         s.setValue(f"{_S}/building_color", p["building_color"])
+        s.setValue(f"{_S}/theme", p["theme"])
         s.setValue(f"{_S}/max_km2", p["max_km2"])
         s.setValue(f"{_S}/buildings", p["want_buildings"])
         s.setValue(f"{_S}/extrude", self.cb_extrude.isChecked())
