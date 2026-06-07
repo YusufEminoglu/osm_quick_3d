@@ -201,6 +201,14 @@ def test_shape_and_base_constants():
     check("base buffer 5 m", osm.BASE_BUFFER_M == 5.0)
 
 
+def test_geometry_transform_result_helper():
+    print("_geometry_transform_ok")
+    check("None counts as success", osm._geometry_transform_ok(None) is True)
+    check("0 counts as success", osm._geometry_transform_ok(0) is True)
+    check("non-zero int counts as failure", osm._geometry_transform_ok(2) is False)
+    check("success enum string counts as success", osm._geometry_transform_ok("GeometryOperationResult.Success") is True)
+
+
 def test_new_features():
     print("new features (water areas, paved areas, tree scatter, relations)")
     # _is_water_area
@@ -239,7 +247,8 @@ def main():
                  test_waterway_width, test_building_color_expression,
                  test_building_color_modes, test_extrusion_expression,
                  test_cache_roundtrip, test_clear_cache,
-                 test_shape_and_base_constants, test_new_features):
+                 test_shape_and_base_constants, test_geometry_transform_result_helper,
+                 test_new_features):
         test()
     print()
     if _failures:

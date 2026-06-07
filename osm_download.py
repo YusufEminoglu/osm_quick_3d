@@ -571,6 +571,38 @@ def write_layer_to_gpkg(layer: QgsVectorLayer, gpkg_path: str, layer_name: str,
     return None
 
 
+def _geometry_transform_ok(result) -> bool:
+    """Return True when QgsGeometry.transform succeeded across QGIS versions."""
+    if result is None:
+        return True
+    try:
+        if int(result) == 0:
+            return True
+    except (TypeError, ValueError):
+        pass
+    text = str(result).lower()
+    if text.endswith("success") or text.endswith(".success"):
+        return True
+    try:
+        from qgis.core import Qgis
+        return result == Qgis.GeometryOperationResult.Success
+    except Exception:
+        return False
+
+
+def _valid_clip_boundary(area_utm: QgsGeometry) -> QgsGeometry:
+    """Use a valid copy of the study area for repeatable clipping."""
+    boundary = QgsGeometry(area_utm)
+    try:
+        if not boundary.isGeosValid():
+            fixed = boundary.makeValid()
+            if fixed is not None and not fixed.isEmpty():
+                boundary = fixed
+    except Exception:
+        pass
+    return boundary
+
+
 # --------------------------------------------------------------------------
 # Main download + clip
 # --------------------------------------------------------------------------
@@ -591,6 +623,7 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
     wgs_rect = to_wgs.transformBoundingBox(area_utm.boundingBox())
     min_lon, min_lat = wgs_rect.xMinimum(), wgs_rect.yMinimum()
     max_lon, max_lat = wgs_rect.xMaximum(), wgs_rect.yMaximum()
+    clip_boundary = _valid_clip_boundary(area_utm)
 
     payload = fetch_overpass(min_lat, min_lon, max_lat, max_lon, feedback=feedback,
                              use_cache=use_cache)
@@ -669,14 +702,27 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
 
     def clip_to_area(geom_wgs: QgsGeometry):
         g = QgsGeometry(geom_wgs)
-        if g.transform(to_utm):
+        if not _geometry_transform_ok(g.transform(to_utm)):
             return None
-        if not g.intersects(area_utm):
+        try:
+            if not g.isGeosValid():
+                fixed = g.makeValid()
+                if fixed is not None and not fixed.isEmpty():
+                    g = fixed
+        except Exception:
+            pass
+        if not g.intersects(clip_boundary):
             return None
-        clipped = g.intersection(area_utm)
-        if clipped.isEmpty() or not clipped.isGeosValid():
-            # Fall back to the original geometry if the intersection is degenerate.
-            return g if g.within(area_utm) else None
+        clipped = g.intersection(clip_boundary)
+        try:
+            if clipped is not None and not clipped.isEmpty() and not clipped.isGeosValid():
+                fixed = clipped.makeValid()
+                if fixed is not None and not fixed.isEmpty():
+                    clipped = fixed
+        except Exception:
+            pass
+        if clipped is None or clipped.isEmpty():
+            return g if g.within(clip_boundary) else None
         return clipped
 
     scattered_trees = 0
@@ -689,7 +735,7 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
             if not geom:
                 continue
             g = QgsGeometry(geom)
-            if g.transform(to_utm) or not area_utm.contains(g):
+            if not _geometry_transform_ok(g.transform(to_utm)) or not clip_boundary.contains(g):
                 counts["skipped"] += 1
                 continue
             height_val = _parse_osm_number(tags.get("height")) or 6.0
@@ -707,7 +753,7 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
                 counts["skipped"] += 1
                 continue
             g = QgsGeometry(geom)
-            if g.transform(to_utm) or not area_utm.contains(g):
+            if not _geometry_transform_ok(g.transform(to_utm)) or not clip_boundary.contains(g):
                 counts["skipped"] += 1
                 continue
             osm_id = str(element.get("id", ""))

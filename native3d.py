@@ -97,58 +97,205 @@ def _clamp_to_terrain(symbol):
             continue
 
 
-def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color_expr=None):
+def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color_expr=None,
+                             color_mode="function", classification="continuous", theme="default"):
     """Attach a 3D renderer that extrudes the building polygons.
 
-    ``height_scale`` exaggerates every prism (1.0 = true OSM height); ``color_expr``
-    is an optional per-feature QGIS expression returning a hex colour so the
-    massing matches the 2D function palette. Returns True if a 3D renderer was set,
-    False if this QGIS build has no usable 3D module (the caller then just keeps
-    the flat 2D layers).
+    Uses QgsRuleBased3DRenderer to support robust, separate colors by function/height in QGIS LTR.
     """
     try:
-        from qgis._3d import QgsVectorLayer3DRenderer, QgsPolygon3DSymbol
+        from qgis._3d import QgsRuleBased3DRenderer, QgsPolygon3DSymbol
+        from qgis.core import QgsProperty
     except Exception:
         return False
 
-    symbol = QgsPolygon3DSymbol()
-    extrusion_expr = _extrusion_expression(height_scale)
+    from . import styling
 
-    # Static fallback height first, then a data-defined override from OSM.
-    try:
-        symbol.setExtrusionHeight(9.0 * float(height_scale or 1.0))
-    except Exception:
-        pass
-    try:
-        from qgis.core import QgsProperty
-        prop_key = getattr(QgsPolygon3DSymbol, "PropertyExtrusionHeight", None)
-        if prop_key is not None:
-            ddp = symbol.dataDefinedProperties()
-            ddp.setProperty(prop_key, QgsProperty.fromExpression(extrusion_expr))
-            symbol.setDataDefinedProperties(ddp)
-    except Exception:
-        pass
-
-    _clamp_to_terrain(symbol)
-
-    material = _make_material(color_hex)
-    _apply_material_color_expression(material, color_expr)
-    if material is not None:
-        for setter in ("setMaterialSettings", "setMaterial"):
-            fn = getattr(symbol, setter, None)
-            if fn is None:
-                continue
+    def make_rule(symbol=None, filter_expr="", description="", is_else=False):
+        """Create a rule across the slightly different PyQGIS 3D signatures."""
+        attempts = (
+            (symbol, filter_expr, description),
+            (symbol, filter_expr),
+            (symbol,),
+            tuple(),
+        )
+        rule = None
+        for args in attempts:
             try:
-                fn(material)
+                rule = QgsRuleBased3DRenderer.Rule(*args)
                 break
             except Exception:
                 continue
+        if rule is None:
+            return None
+        if symbol is not None:
+            for setter in ("setSymbol", "setSymbol3D"):
+                fn = getattr(rule, setter, None)
+                if fn is None:
+                    continue
+                try:
+                    fn(symbol)
+                    break
+                except Exception:
+                    continue
+        if filter_expr:
+            for setter in ("setFilterExpression", "setFilter", "setFilterExpressionString"):
+                fn = getattr(rule, setter, None)
+                if fn is None:
+                    continue
+                try:
+                    fn(filter_expr)
+                    break
+                except Exception:
+                    continue
+        if description:
+            try:
+                rule.setDescription(description)
+            except Exception:
+                pass
+        if is_else:
+            try:
+                rule.setIsElse(True)
+            except Exception:
+                pass
+        return rule
 
-    try:
-        layer.setRenderer3D(QgsVectorLayer3DRenderer(symbol))
-        return True
-    except Exception:
+    def append_rule(rule):
+        if rule is None:
+            return
+        try:
+            root_rule.appendChild(rule)
+        except Exception:
+            pass
+
+    # 1. Create root rule
+    root_rule = make_rule(None)
+    if root_rule is None:
         return False
+
+    # 2. Get theme configuration
+    t = styling.THEMES.get(theme, styling.THEMES["default"])
+
+    # helper to build a symbol with a specific color and height settings
+    def make_building_symbol(color):
+        sym = QgsPolygon3DSymbol()
+        # Set default extrusion height
+        try:
+            sym.setExtrusionHeight(9.0 * float(height_scale or 1.0))
+        except Exception:
+            pass
+        # Set data-defined height
+        try:
+            prop_key = getattr(QgsPolygon3DSymbol, "PropertyExtrusionHeight", None)
+            if prop_key is not None:
+                ddp = sym.dataDefinedProperties()
+                ddp.setProperty(prop_key, QgsProperty.fromExpression(_extrusion_expression(height_scale)))
+                sym.setDataDefinedProperties(ddp)
+        except Exception:
+            pass
+
+        _clamp_to_terrain(sym)
+
+        # Set material color
+        mat = _make_material(color)
+        if mat is not None:
+            for setter in ("setMaterialSettings", "setMaterial"):
+                fn = getattr(sym, setter, None)
+                if fn is not None:
+                    try:
+                        fn(mat)
+                        break
+                    except Exception:
+                        pass
+        return sym
+
+    if color_mode == "function":
+        theme_building_colors = t.get("building_colors", styling.BUILDING_COLORS)
+
+        # Add rules for each function
+        # residential
+        res_sym = make_building_symbol(theme_building_colors["residential"])
+        append_rule(make_rule(res_sym, "lower(\"building\") IN ('apartments','residential','house','detached','terrace','dormitory','bungalow','semidetached_house','hut')", "Residential"))
+
+        # commercial
+        com_sym = make_building_symbol(theme_building_colors["commercial"])
+        append_rule(make_rule(com_sym, "lower(\"building\") IN ('commercial','retail','office','supermarket','kiosk','hotel')", "Commercial"))
+
+        # industrial
+        ind_sym = make_building_symbol(theme_building_colors["industrial"])
+        append_rule(make_rule(ind_sym, "lower(\"building\") IN ('industrial','warehouse','manufacture','hangar','factory')", "Industrial"))
+
+        # civic
+        civ_sym = make_building_symbol(theme_building_colors["civic"])
+        append_rule(make_rule(civ_sym, "lower(\"building\") IN ('school','university','college','kindergarten','hospital','clinic','public','civic','government','townhall')", "Civic"))
+
+        # worship
+        wor_sym = make_building_symbol(theme_building_colors["worship"])
+        append_rule(make_rule(wor_sym, "lower(\"building\") IN ('church','mosque','temple','synagogue','cathedral','chapel')", "Worship"))
+
+        # other
+        oth_sym = make_building_symbol(theme_building_colors["other"])
+        append_rule(make_rule(oth_sym, "", "Other", is_else=True))
+
+    else:
+        # Ramp modes: height, soft_gray, soft_warm, teal, soft_salmon, soft_purple, soft_sand
+        if color_mode == "height":
+            lo_hex, hi_hex = t["building_ramp"]
+        else:
+            lo_hex, hi_hex = styling._BUILDING_RAMPS.get(color_mode, t["building_ramp"])
+
+        # Get breaks and colors
+        min_h, max_h, breaks, colors = styling.get_breaks_and_colors(layer, lo_hex, hi_hex, classification)
+        h_expr = EXTRUSION_EXPRESSION
+
+        if classification == "continuous":
+            # For continuous, create 10 discrete steps to simulate a gradient
+            steps = 10
+            step_val = (max_h - min_h) / steps
+            for i in range(steps):
+                f_min = min_h + i * step_val
+                f_max = min_h + (i + 1) * step_val
+                factor = (i + 0.5) / steps
+                col = styling._interpolate_color(lo_hex, hi_hex, factor)
+                sym = make_building_symbol(col)
+
+                if i == 0:
+                    filter_str = f"({h_expr}) <= {f_max:.4f}"
+                elif i == steps - 1:
+                    filter_str = f"({h_expr}) > {f_min:.4f}"
+                else:
+                    filter_str = f"({h_expr}) > {f_min:.4f} AND ({h_expr}) <= {f_max:.4f}"
+
+                append_rule(make_rule(sym, filter_str, f"Height Step {i+1}"))
+        else:
+            # Discrete/Quantile: 5 classes separated by 4 breaks: breaks[0..3]
+            # colors[0..4]
+            b1, b2, b3, b4 = breaks
+
+            # class 1
+            sym1 = make_building_symbol(colors[0])
+            append_rule(make_rule(sym1, f"({h_expr}) <= {b1:.4f}", f"<= {b1:.1f}m"))
+
+            # class 2
+            sym2 = make_building_symbol(colors[1])
+            append_rule(make_rule(sym2, f"({h_expr}) > {b1:.4f} AND ({h_expr}) <= {b2:.4f}", f"{b1:.1f}m - {b2:.1f}m"))
+
+            # class 3
+            sym3 = make_building_symbol(colors[2])
+            append_rule(make_rule(sym3, f"({h_expr}) > {b2:.4f} AND ({h_expr}) <= {b3:.4f}", f"{b2:.1f}m - {b3:.1f}m"))
+
+            # class 4
+            sym4 = make_building_symbol(colors[3])
+            append_rule(make_rule(sym4, f"({h_expr}) > {b3:.4f} AND ({h_expr}) <= {b4:.4f}", f"{b3:.1f}m - {b4:.1f}m"))
+
+            # class 5
+            sym5 = make_building_symbol(colors[4])
+            append_rule(make_rule(sym5, f"({h_expr}) > {b4:.4f}", f"> {b4:.1f}m"))
+
+    # 3. Set the rule-based 3D renderer on the layer
+    renderer = QgsRuleBased3DRenderer(root_rule)
+    layer.setRenderer3D(renderer)
+    return True
 
 
 def apply_base_slab(layer, depth=5.0, top_z=-0.15, color_hex="#5e7274"):
@@ -287,10 +434,11 @@ def apply_tree_3d(layer, color_hex="#5f9e4c"):
         return False
 
 
-def set_3d_map_tile_resolution(iface, resolution=1024):
-    """Find all active Qgs3DMapCanvas widgets in the project and set their tile resolution."""
+def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None):
+    """Find all active Qgs3DMapCanvas widgets in the project and set their resolution/background."""
     try:
         from qgis.PyQt.QtWidgets import QWidget
+        from qgis.PyQt.QtGui import QColor
         canvases = []
         for w in iface.mainWindow().findChildren(QWidget):
             try:
@@ -302,7 +450,7 @@ def set_3d_map_tile_resolution(iface, resolution=1024):
         for c3d in canvases:
             try:
                 settings = c3d.mapSettings()
-                
+
                 # 1. Modern QGIS 3D API (terrainSettings)
                 applied = False
                 try:
@@ -314,7 +462,7 @@ def set_3d_map_tile_resolution(iface, resolution=1024):
                             applied = True
                 except Exception:
                     pass
-                
+
                 # 2. Legacy QGIS 3D API
                 if not applied:
                     try:
@@ -322,10 +470,18 @@ def set_3d_map_tile_resolution(iface, resolution=1024):
                             settings.setMapTileResolution(int(resolution))
                     except Exception:
                         pass
-                
+
+                # Set background color and disable skybox
+                if bg_color_hex:
+                    try:
+                        settings.setBackgroundColor(QColor(bg_color_hex))
+                        settings.setIsSkyboxEnabled(False)
+                    except Exception:
+                        pass
+
                 # Apply changes to canvas
                 c3d.setMapSettings(settings)
-                
+
                 # Force updates by toggling scene updates
                 try:
                     scene = c3d.scene()
@@ -334,7 +490,7 @@ def set_3d_map_tile_resolution(iface, resolution=1024):
                         scene.setSceneUpdatesEnabled(True)
                 except Exception:
                     pass
-                
+
                 c3d.update()
             except Exception:
                 pass
@@ -342,7 +498,7 @@ def set_3d_map_tile_resolution(iface, resolution=1024):
         pass
 
 
-def open_3d_view(iface, resolution=1024):
+def open_3d_view(iface, resolution=1024, bg_color_hex=None):
     """Best-effort: open a QGIS 3D Map View by triggering the built-in action.
 
     There is no clean public API to spawn a 3D canvas, so we trigger the same
@@ -385,7 +541,7 @@ def open_3d_view(iface, resolution=1024):
         # Give QGIS 3D Map View 600 ms to spawn, then apply the map tile resolution
         try:
             from qgis.PyQt.QtCore import QTimer
-            QTimer.singleShot(600, lambda: set_3d_map_tile_resolution(iface, resolution))
+            QTimer.singleShot(600, lambda: set_3d_map_tile_resolution(iface, resolution, bg_color_hex))
         except Exception:
             pass
         return True

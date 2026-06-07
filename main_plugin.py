@@ -49,8 +49,8 @@ class OsmQuick3DPlugin:
 
     def initGui(self):
         self.action = QAction(QIcon(self.icon_path), "OSM Quick 3D", self.iface.mainWindow())
-        self.action.setStatusTip("Download OpenStreetMap and open it as native 3D in QGIS")
-        self.action.triggered.connect(self.show_dialog)
+        self.action.setStatusTip("Open the OSM Quick 3D controller dock panel directly")
+        self.action.triggered.connect(self.show_dock)
         self.iface.addToolBarIcon(self.action)
         self.iface.addPluginToMenu(self.MENU_NAME, self.action)
 
@@ -71,6 +71,10 @@ class OsmQuick3DPlugin:
             self.dialog.close()
             self.dialog = None
         if self.dock:
+            try:
+                self.dock.cleanup_embedded_3d()
+            except Exception:
+                pass
             self.iface.removeDockWidget(self.dock)
             self.dock.close()
             self.dock = None
@@ -79,12 +83,26 @@ class OsmQuick3DPlugin:
         if self.dock is None:
             from .dock import PluginDockWidget
             self.dock = PluginDockWidget(self.iface, self.iface.mainWindow())
+            self.dock.runRequested.connect(self.run_action)
         self.dock.refresh_groups()
-        self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
+        try:
+            right_area = Qt.DockWidgetArea.RightDockWidgetArea
+        except AttributeError:
+            right_area = getattr(Qt, "RightDockWidgetArea")
+        self.iface.addDockWidget(right_area, self.dock)
         self.dock.show()
+        self.dock.raise_()
+        try:
+            try:
+                horizontal = Qt.Orientation.Horizontal
+            except AttributeError:
+                horizontal = getattr(Qt, "Horizontal")
+            self.iface.mainWindow().resizeDocks([self.dock], [430], horizontal)
+        except Exception:
+            pass
         
         from qgis.PyQt.QtCore import QTimer
-        QTimer.singleShot(200, self._dock_3d_above_controller)
+        QTimer.singleShot(500, self.dock.embed_3d_view)
 
     def show_dialog(self):
         if self.dialog is None:
@@ -100,6 +118,8 @@ class OsmQuick3DPlugin:
     def _set_status(self, text, error=False):
         if self.dialog:
             self.dialog.set_status(text, error=error)
+        if self.dock:
+            self.dock.set_status(text, error=error)
         QApplication.processEvents()
 
     def _area_rect_and_crs(self, area_source):
@@ -370,6 +390,13 @@ class OsmQuick3DPlugin:
                     style_fn(layer)
                 except Exception:
                     pass
+                try:
+                    layer.setCustomProperty("osm_quick_3d/theme", theme)
+                    layer.setCustomProperty("osm_quick_3d/building_color", color_mode)
+                    layer.setCustomProperty("osm_quick_3d/classification", classification)
+                    layer.setCustomProperty("osm_quick_3d/height_scale", p.get("height_scale", 1.0))
+                except Exception:
+                    pass
                 if group is not None:
                     # addToLegend=False, then insert at the top of our group so the
                     # spec's bottom-to-top order ends with buildings drawn on top.
@@ -412,7 +439,17 @@ class OsmQuick3DPlugin:
                         classification=p.get("classification", "continuous"),
                         layer=buildings_layer,
                         theme=theme),
+                    color_mode=p.get("building_color", styling.BUILDING_COLOR_FUNCTION),
+                    classification=p.get("classification", "continuous"),
+                    theme=theme,
                 )
+                try:
+                    buildings_layer.setCustomProperty("osm_quick_3d/theme", theme)
+                    buildings_layer.setCustomProperty("osm_quick_3d/building_color", p.get("building_color", styling.BUILDING_COLOR_FUNCTION))
+                    buildings_layer.setCustomProperty("osm_quick_3d/classification", p.get("classification", "continuous"))
+                    buildings_layer.setCustomProperty("osm_quick_3d/height_scale", p.get("height_scale", 1.0))
+                except Exception:
+                    pass
             # Tree points get a matching 3D pass (green/theme canopies) when 3D is on.
             if p["extrude_3d"] and trees_layer is not None:
                 native3d.apply_tree_3d(trees_layer, color_hex=t_data["trees"])
@@ -439,11 +476,11 @@ class OsmQuick3DPlugin:
             canvas.freeze(False)
             canvas.refresh()
 
-        opened_3d = native3d.open_3d_view(self.iface, resolution=p.get("map_resolution", 1024)) if p["open_3d"] else False
+        opened_3d = native3d.open_3d_view(self.iface, resolution=p.get("map_resolution", 1024), bg_color_hex=canvas.canvasColor().name()) if p["open_3d"] else False
         
-        if p["open_3d"]:
+        if p["open_3d"] and self.dock:
             from qgis.PyQt.QtCore import QTimer
-            QTimer.singleShot(1000, self._dock_3d_above_controller)
+            QTimer.singleShot(1000, self.dock.embed_3d_view)
 
         summary = f"{total} features added: " + ", ".join(added) + f" (EPSG:{epsg})."
         totals = self._building_totals(buildings_layer)
