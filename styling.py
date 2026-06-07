@@ -154,6 +154,13 @@ def base_color_hex(mode=BUILDING_COLOR_FUNCTION) -> str:
     return _BASE_NEUTRAL
 
 
+def building_base_color(mode=BUILDING_COLOR_FUNCTION) -> str:
+    """A single fallback hex color for the building color mode."""
+    if mode in _BUILDING_RAMPS:
+        return _BUILDING_RAMPS[mode][1]
+    return "#cac5bf"
+
+
 def _ramp_color_expression(lo_hex, hi_hex):
     """A color_rgb() expression interpolating lo->hi by building height."""
     r1, g1, b1 = _hex_to_rgb(lo_hex)

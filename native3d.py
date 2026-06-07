@@ -307,9 +307,40 @@ def set_3d_map_tile_resolution(iface, resolution=1024):
         for c3d in canvases:
             try:
                 settings = c3d.mapSettings()
-                if hasattr(settings, "setMapTileResolution"):
-                    settings.setMapTileResolution(int(resolution))
-                    c3d.setMapSettings(settings)
+                
+                # 1. Modern QGIS 3D API (terrainSettings)
+                applied = False
+                try:
+                    if hasattr(settings, "terrainSettings"):
+                        t_settings = settings.terrainSettings()
+                        if t_settings and hasattr(t_settings, "setMapTileResolution"):
+                            t_settings.setMapTileResolution(int(resolution))
+                            settings.setTerrainSettings(t_settings)
+                            applied = True
+                except Exception:
+                    pass
+                
+                # 2. Legacy QGIS 3D API
+                if not applied:
+                    try:
+                        if hasattr(settings, "setMapTileResolution"):
+                            settings.setMapTileResolution(int(resolution))
+                    except Exception:
+                        pass
+                
+                # Apply changes to canvas
+                c3d.setMapSettings(settings)
+                
+                # Force updates by toggling scene updates
+                try:
+                    scene = c3d.scene()
+                    if scene:
+                        scene.setSceneUpdatesEnabled(False)
+                        scene.setSceneUpdatesEnabled(True)
+                except Exception:
+                    pass
+                
+                c3d.update()
             except Exception:
                 pass
     except Exception:

@@ -368,6 +368,7 @@ class OsmQuick3DPlugin:
         if p["extrude_3d"] and buildings_layer is not None:
             extruded = native3d.apply_building_extrusion(
                 buildings_layer,
+                color_hex=styling.building_base_color(p.get("building_color", styling.BUILDING_COLOR_FUNCTION)),
                 height_scale=p.get("height_scale", 1.0),
                 color_expr=styling.building_color_expression(
                     p.get("building_color", styling.BUILDING_COLOR_FUNCTION)),

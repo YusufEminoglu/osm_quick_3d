@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.13.2] - 2026-06-08
+
+- Fix 3D resolution updates, add building color fallback in 3D, and reorganize dock UI with an Advanced Style panel.
+
 ## [0.13.1] - 2026-06-08
 
 - Fix visual basemap clipping, base plinth capping/offset, and add 3D map tile resolution controls.

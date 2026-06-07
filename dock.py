@@ -150,14 +150,20 @@ class PluginDockWidget(QDockWidget):
         self.color_preview.setFixedHeight(12)
         form.addRow("", self.color_preview)
 
+        root.addWidget(settings_box)
+
+        # Advanced Style controls
+        adv_box = QGroupBox("Advanced style")
+        adv_form = QFormLayout(adv_box)
+
         self.cb_labels = QCheckBox("Show name labels")
         self.cb_labels.toggled.connect(self._apply_changes)
-        form.addRow("", self.cb_labels)
+        adv_form.addRow("", self.cb_labels)
 
         self.cb_base = QCheckBox("Extrude ground base plinth")
         self.cb_base.toggled.connect(self.cb_base.setEnabled) # dummy check
         self.cb_base.toggled.connect(self._apply_changes)
-        form.addRow("", self.cb_base)
+        adv_form.addRow("", self.cb_base)
 
         self.map_resolution = QComboBox()
         self.map_resolution.addItem("Low (256 px)", 256)
@@ -166,9 +172,9 @@ class PluginDockWidget(QDockWidget):
         self.map_resolution.addItem("Ultra (2048 px)", 2048)
         self.map_resolution.addItem("Insane (4096 px)", 4096)
         self.map_resolution.currentIndexChanged.connect(self._apply_resolution)
-        form.addRow("Map resolution (3D):", self.map_resolution)
+        adv_form.addRow("Map resolution (3D):", self.map_resolution)
 
-        root.addWidget(settings_box)
+        root.addWidget(adv_box)
         root.addStretch(1)
 
         scroll.setWidget(container)
@@ -286,6 +292,7 @@ class PluginDockWidget(QDockWidget):
             # Update 3D extrusion
             native3d.apply_building_extrusion(
                 buildings,
+                color_hex=styling.building_base_color(color_mode),
                 height_scale=scale,
                 color_expr=styling.building_color_expression(color_mode)
             )
