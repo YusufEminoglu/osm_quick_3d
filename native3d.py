@@ -151,7 +151,7 @@ def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color
         return False
 
 
-def apply_base_slab(layer, depth=5.0, top_z=0.0, color_hex="#5e7274"):
+def apply_base_slab(layer, depth=5.0, top_z=-0.1, color_hex="#5e7274"):
     """Extrude the ground base as a recessed slab: top at ``top_z``, ``depth`` deep.
 
     The slab's top face sits at ``top_z`` (ground level, 0) and its base reaches
@@ -165,6 +165,10 @@ def apply_base_slab(layer, depth=5.0, top_z=0.0, color_hex="#5e7274"):
         return False
 
     symbol = QgsPolygon3DSymbol()
+    try:
+        symbol.setAddBackFaces(True)
+    except Exception:
+        pass
     try:
         symbol.setExtrusionHeight(float(depth))
     except Exception:

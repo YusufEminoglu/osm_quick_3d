@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.12.0] - 2026-06-08
+
+- Scrollable and compact UI dialog/dock, and 3D base slab rendering fixes (capping and Z-offset)
+
+## [0.12.0] - 2026-06-08
+
+- Scrollable UI panels: wrapped dialog and dock settings in resizable scroll areas for smaller monitors
+- Compact design: reduced padding, margins, and font sizes to 11px to make UI compact and highly professional
+- Z-Fighting fix: set default ground base slab top_z to -0.1 to avoid overlapping with draped basemaps
+- Solid base capping: enabled back-faces rendering to ensure the ground base plinth is solid and filled
+
 ## [0.11.0] - 2026-06-08
 
 - Live 3D Controller Dock: introduced an interactive sidebar panel to adjust building height exaggeration, color modes, labels, and base slab depth dynamically without re-downloading

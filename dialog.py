@@ -21,7 +21,9 @@ from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
+    QWidget,
 )
 from qgis.core import QgsMapLayerProxyModel, QgsSettings
 from qgis.gui import QgsMapLayerComboBox
@@ -60,7 +62,7 @@ class PluginDialog(QDialog):
         icon_path = os.path.join(os.path.dirname(__file__), "icons", "icon.png")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-        self.resize(540, 640)
+        self.resize(500, 580)
         self._build_ui()
         self._restore()
 
@@ -69,44 +71,48 @@ class PluginDialog(QDialog):
     QDialog { background: #eef1f2; }
     QGroupBox {
         font-weight: 600;
+        font-size: 11px;
         color: #34474a;
         border: 1px solid #e0e5e6;
-        border-radius: 12px;
-        margin-top: 16px;
-        padding: 14px 14px 12px 14px;
+        border-radius: 10px;
+        margin-top: 12px;
+        padding: 10px 10px 8px 10px;
         background: #ffffff;
     }
     QGroupBox::title {
         subcontrol-origin: margin;
         subcontrol-position: top left;
-        left: 14px;
+        left: 10px;
         top: 2px;
-        padding: 2px 8px;
+        padding: 0 6px;
         color: #5d7174;
         background: transparent;
     }
-    QLabel { color: #3c4749; background: transparent; }
-    QCheckBox { spacing: 9px; padding: 3px 0; color: #34474a; background: transparent; }
-    QCheckBox::indicator { width: 17px; height: 17px; }
+    QLabel { color: #3c4749; background: transparent; font-size: 11px; }
+    QCheckBox { spacing: 6px; padding: 2px 0; color: #34474a; background: transparent; font-size: 11px; }
+    QCheckBox::indicator { width: 14px; height: 14px; }
     QComboBox, QDoubleSpinBox {
         border: 1px solid #d2d9da;
-        border-radius: 8px;
-        padding: 6px 9px;
+        border-radius: 6px;
+        padding: 4px 6px;
         background: #fbfcfc;
-        min-height: 20px;
+        min-height: 18px;
+        font-size: 11px;
         selection-background-color: #cfe4e1;
         selection-color: #21302f;
     }
     QComboBox:hover, QDoubleSpinBox:hover { border-color: #9cc3bf; }
     QComboBox:focus, QDoubleSpinBox:focus { border-color: #3f8079; background: #ffffff; }
-    QComboBox::drop-down { border: 0; width: 22px; }
+    QComboBox::drop-down { border: 0; width: 18px; }
     QComboBox QAbstractItemView {
-        border: 1px solid #d2d9da; border-radius: 8px; padding: 4px;
+        border: 1px solid #d2d9da; border-radius: 6px; padding: 2px;
         background: #ffffff; selection-background-color: #cfe4e1; selection-color: #21302f;
+        font-size: 11px;
     }
     QPushButton {
-        border-radius: 9px; padding: 8px 16px;
+        border-radius: 6px; padding: 6px 12px;
         background: #eef1f2; border: 1px solid #d2d9da; color: #34474a;
+        font-size: 11px;
     }
     QPushButton:hover { background: #e4e9ea; }
     """
@@ -114,21 +120,37 @@ class PluginDialog(QDialog):
     def _build_ui(self):
         self.setStyleSheet(self._QSS)
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(8)
 
         root.addWidget(self._header())
-        root.addWidget(self._group_area())
-        root.addWidget(self._group_layers())
-        root.addWidget(self._group_3d())
-        root.addWidget(self._group_output())
-        root.addStretch(1)
+
+        # Scroll Area for intermediate group boxes to prevent oversize on small monitors
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
+        
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("background: transparent;")
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 4, 0)
+        scroll_layout.setSpacing(8)
+
+        scroll_layout.addWidget(self._group_area())
+        scroll_layout.addWidget(self._group_layers())
+        scroll_layout.addWidget(self._group_3d())
+        scroll_layout.addWidget(self._group_output())
+        scroll_layout.addStretch(1)
+
+        scroll.setWidget(scroll_content)
+        root.addWidget(scroll)
 
         self.status = QLabel("Ready")
         self.status.setWordWrap(True)
         self.status.setStyleSheet(
-            "color:#52666a;padding:9px 11px;background:#ffffff;"
-            "border:1px solid #e0e5e6;border-radius:9px;"
+            "color:#52666a;padding:6px 9px;background:#ffffff;"
+            "border:1px solid #e0e5e6;border-radius:8px;font-size:11px;"
         )
         root.addWidget(self.status)
 
@@ -136,7 +158,7 @@ class PluginDialog(QDialog):
         self.run_btn = bb.addButton("Download & build 3D", QDialogButtonBox.ButtonRole.AcceptRole)
         self.run_btn.setStyleSheet(
             "QPushButton{background:#3f8079;color:#ffffff;font-weight:600;border:0;"
-            "border-radius:9px;padding:9px 20px;}"
+            "border-radius:8px;padding:8px 16px;font-size:11px;}"
             "QPushButton:hover{background:#356c66;}"
             "QPushButton:pressed{background:#2c5b56;}"
         )

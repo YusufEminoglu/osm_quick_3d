@@ -17,6 +17,7 @@ from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
     QDockWidget,
@@ -45,33 +46,59 @@ class PluginDockWidget(QDockWidget):
     }
     QGroupBox {
         font-weight: 600;
+        font-size: 11px;
         color: #34474a;
         border: 1px solid #e0e5e6;
-        border-radius: 12px;
-        margin-top: 12px;
-        padding: 12px;
+        border-radius: 8px;
+        margin-top: 10px;
+        padding: 8px;
         background: #ffffff;
     }
-    QLabel { color: #3c4749; background: transparent; }
-    QCheckBox { spacing: 9px; padding: 3px 0; color: #34474a; background: transparent; }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        subcontrol-position: top left;
+        left: 8px;
+        top: 2px;
+        padding: 0 4px;
+        color: #5d7174;
+        background: transparent;
+    }
+    QLabel { color: #3c4749; background: transparent; font-size: 11px; }
+    QCheckBox { spacing: 6px; padding: 2px 0; color: #34474a; background: transparent; font-size: 11px; }
+    QCheckBox::indicator { width: 14px; height: 14px; }
     QComboBox, QDoubleSpinBox {
         border: 1px solid #d2d9da;
-        border-radius: 8px;
-        padding: 4px 6px;
+        border-radius: 6px;
+        padding: 3px 5px;
         background: #fbfcfc;
-        min-height: 20px;
+        min-height: 18px;
+        font-size: 11px;
     }
     QComboBox:hover, QDoubleSpinBox:hover { border-color: #9cc3bf; }
+    QComboBox:focus, QDoubleSpinBox:focus { border-color: #3f8079; background: #ffffff; }
     QPushButton {
-        border-radius: 8px; padding: 6px 12px;
+        border-radius: 6px; padding: 4px 10px;
         background: #eef1f2; border: 1px solid #d2d9da; color: #34474a;
+        font-size: 11px;
     }
     QPushButton:hover { background: #e4e9ea; }
     """
 
     def _build_ui(self):
         self.setStyleSheet(self._QSS)
+        
+        main_widget = QWidget()
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
+
         container = QWidget()
+        container.setStyleSheet("background: transparent;")
         root = QVBoxLayout(container)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
@@ -121,7 +148,9 @@ class PluginDockWidget(QDockWidget):
         root.addWidget(settings_box)
         root.addStretch(1)
 
-        self.setWidget(container)
+        scroll.setWidget(container)
+        main_layout.addWidget(scroll)
+        self.setWidget(main_widget)
 
     def refresh_groups(self):
         self.group_combo.blockSignals(True)
