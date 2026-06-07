@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.11.0] - 2026-06-08
+
+- Live 3D Controller Dock: introduced an interactive sidebar panel to adjust building height exaggeration, color modes, labels, and base slab depth dynamically without re-downloading
+
 ## [0.10.1] - 2026-06-07
 
 - Cartographic elevation: styled car parks and paved plazas with category-specific dark neutral outlines instead of green outlines

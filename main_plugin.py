@@ -43,7 +43,9 @@ class OsmQuick3DPlugin:
         self.plugin_dir = os.path.dirname(__file__)
         self.icon_path = os.path.join(self.plugin_dir, "icons", "icon.png")
         self.action = None
+        self.dock_action = None
         self.dialog = None
+        self.dock = None
 
     def initGui(self):
         self.action = QAction(QIcon(self.icon_path), "OSM Quick 3D", self.iface.mainWindow())
@@ -52,14 +54,34 @@ class OsmQuick3DPlugin:
         self.iface.addToolBarIcon(self.action)
         self.iface.addPluginToMenu(self.MENU_NAME, self.action)
 
+        self.dock_action = QAction("3D Controller Dock", self.iface.mainWindow())
+        self.dock_action.setStatusTip("Open the live 3D styling controller dock panel")
+        self.dock_action.triggered.connect(self.show_dock)
+        self.iface.addPluginToMenu(self.MENU_NAME, self.dock_action)
+
     def unload(self):
         if self.action:
             self.iface.removePluginMenu(self.MENU_NAME, self.action)
             self.iface.removeToolBarIcon(self.action)
             self.action = None
+        if self.dock_action:
+            self.iface.removePluginMenu(self.MENU_NAME, self.dock_action)
+            self.dock_action = None
         if self.dialog:
             self.dialog.close()
             self.dialog = None
+        if self.dock:
+            self.iface.removeDockWidget(self.dock)
+            self.dock.close()
+            self.dock = None
+
+    def show_dock(self):
+        if self.dock is None:
+            from .dock import PluginDockWidget
+            self.dock = PluginDockWidget(self.iface, self.iface.mainWindow())
+        self.dock.refresh_groups()
+        self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
+        self.dock.show()
 
     def show_dialog(self):
         if self.dialog is None:
@@ -382,6 +404,7 @@ class OsmQuick3DPlugin:
             summary += f" GeoPackage: {gpkg_path}"
         self.iface.messageBar().pushSuccess("OSM Quick 3D", summary)
         self._set_status(summary)
+        self.show_dock()
         if gpkg_path is not None and gpkg_failed:
             self.iface.messageBar().pushWarning(
                 "OSM Quick 3D",
