@@ -3,7 +3,7 @@ name=OSM Quick 3D
 qgisMinimumVersion=3.28
 qgisMaximumVersion=3.99
 description=One-click OpenStreetMap into native QGIS: function-styled layers plus flat-roof 3D building massing on a selectable study-area shape (rectangle, rounded rectangle, circle or hexagon) over a recessed ground base, built for larger areas.
-version=0.10.0
+version=0.10.1
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -23,6 +23,8 @@ hasProcessingProvider=no
 license=MIT
 
 changelog=
+    OSM Quick 3D 0.10.1
+        - Cartographic elevation: styled car parks and paved plazas with category-specific dark neutral outlines instead of green outlines.
     OSM Quick 3D 0.10.0
         - Relation (multipolygon) support: handles complex building footprints and green/water relations with courtyards and holes correctly.
         - OSM Water areas layer: a new MultiPolygon layer that downloads and styles lakes, ponds, reservoirs, and riverbanks.

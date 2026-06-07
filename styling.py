@@ -42,13 +42,13 @@ ROAD_STYLE = {
     "other": ("#e0dbd0", 0.5, False),
 }
 GREEN_COLORS = {
-    "park": "#a9c08a",
-    "forest": "#7f9e6a",
-    "pitch": "#b6cf93",
-    "cemetery": "#9bae8f",
-    "green": "#a7b98f",
-    "parking": "#cbd1d6",     # asphalt grey
-    "pedestrian": "#e3e1db",  # stone/paved light grey
+    "park": ("#a9c08a", "#7c8a68"),
+    "forest": ("#7f9e6a", "#5f7e4a"),
+    "pitch": ("#b6cf93", "#8da96d"),
+    "cemetery": ("#9bae8f", "#788a6f"),
+    "green": ("#a7b98f", "#7c8f68"),
+    "parking": ("#cbd1d6", "#a0a7ad"),     # asphalt grey, darker grey outline
+    "pedestrian": ("#e3e1db", "#b5b3ad"),  # stone/paved light grey, darker outline
 }
 
 # OSM tag values are emitted lower-cased by osm_download; lower() here is a
@@ -253,7 +253,7 @@ def style_roads(layer):
 
 
 def style_greens(layer):
-    mapping = {k: _fill(v, outline="#7c8a68", outline_w=0.12) for k, v in GREEN_COLORS.items()}
+    mapping = {k: _fill(color, outline=out_color, outline_w=0.12) for k, (color, out_color) in GREEN_COLORS.items()}
     layer.setRenderer(_categorized(GREEN_CLASS_EXPR, mapping))
     layer.triggerRepaint()
 

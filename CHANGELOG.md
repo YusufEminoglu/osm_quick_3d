@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.10.1] - 2026-06-07
+
+- Cartographic elevation: styled car parks and paved plazas with category-specific dark neutral outlines instead of green outlines
+
 ## [0.10.0] - 2026-06-07
 
 - Add relation multipolygon support, water areas, tree scattering, and car parks/plazas
