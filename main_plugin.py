@@ -225,18 +225,7 @@ class OsmQuick3DPlugin:
         if basemap is None or group is None:
             return
         
-        # 1. Convert the group tree node to a QgsGroupLayer to enable group rendering
-        try:
-            from qgis.core import QgsGroupLayer, QgsProject
-            if hasattr(group, "convertToGroupLayer"):
-                options = QgsGroupLayer.LayerOptions(QgsProject.instance().transformContext())
-                group_layer = group.convertToGroupLayer(options)
-                if group_layer:
-                    QgsProject.instance().addMapLayer(group_layer, False)
-        except Exception:
-            pass
-
-        # 2. Move the basemap layer to the bottom of the group tree (below base)
+        # Move the basemap layer to the bottom of the group tree (below base)
         try:
             from qgis.core import QgsProject
             root = QgsProject.instance().layerTreeRoot()
@@ -494,11 +483,12 @@ class OsmQuick3DPlugin:
                         break
             
             if c3d_dock and self.dock:
+                c3d_dock.setFloating(True)
+                self.dock.setFloating(True)
+                win.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, c3d_dock)
+                win.splitDockWidget(c3d_dock, self.dock, Qt.Vertical)
                 c3d_dock.setFloating(False)
                 self.dock.setFloating(False)
-                win.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, c3d_dock)
-                win.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
-                win.splitDockWidget(c3d_dock, self.dock, Qt.Vertical)
                 c3d_dock.show()
                 self.dock.show()
         except Exception:

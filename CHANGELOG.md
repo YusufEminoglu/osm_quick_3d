@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.0] - 2026-06-08
+
+- Fix visual basemap clipping black borders in 3D Map View and add Advanced Layer Styling tab
+
+## [0.16.0] - 2026-06-08
+
+- Release v0.16.0
+
 ## [0.15.0] - 2026-06-08
 
 - Fix basemap clipping in 3D Map View, implement dynamic height classification, fix base_3d NameError, and polish dock widget stacking

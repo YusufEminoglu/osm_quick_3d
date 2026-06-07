@@ -397,30 +397,36 @@ def label_by_name(layer, size=8.0, color_hex="#3a4042", field="name"):
 def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_hex="#ffffff"):
     """Subtle 2D ground fill, tinted to match the building colour ``mode``.
 
-    If ``transparent`` is True, we use QPainter's CompositionMode_DestinationIn
-    to mask out the draped basemap outside the study area.
+    If ``transparent`` is True, we use QgsInvertedPolygonRenderer to mask out the
+    draped basemap outside the study area with the map canvas background color.
     """
     slab = base_color_hex(mode)
     outline = _scale_hex(slab, 1.25)
+    try:
+        from qgis.PyQt.QtGui import QPainter
+        layer.setBlendMode(QPainter.CompositionMode_SourceOver)
+    except Exception:
+        pass
     if transparent:
         try:
-            from qgis.PyQt.QtGui import QPainter
-            layer.setBlendMode(QPainter.CompositionMode_DestinationIn)
+            from qgis.core import QgsInvertedPolygonRenderer
+            symbol = QgsFillSymbol.createSimple({
+                "color": bg_color_hex,
+                "outline_color": "0,0,0,0",
+                "outline_width": "0.0",
+                "style": "solid",
+            })
+            layer.setRenderer(QgsInvertedPolygonRenderer(QgsSingleSymbolRenderer(symbol)))
         except Exception:
-            pass
-        symbol = QgsFillSymbol.createSimple({
-            "color": "#ffffff",
-            "outline_color": "0,0,0,0",
-            "outline_width": "0.0",
-            "style": "solid",
-        })
-        layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+            # Fallback if inverted renderer fails
+            symbol = QgsFillSymbol.createSimple({
+                "color": "0,0,0,0",
+                "outline_color": outline,
+                "outline_width": "0.2",
+                "style": "no",
+            })
+            layer.setRenderer(QgsSingleSymbolRenderer(symbol))
     else:
-        try:
-            from qgis.PyQt.QtGui import QPainter
-            layer.setBlendMode(QPainter.CompositionMode_SourceOver)
-        except Exception:
-            pass
         fill = _scale_hex(slab, 1.6)        # light tint of the slab colour
         symbol = _fill(fill, outline=outline, outline_w=0.2)
         layer.setRenderer(QgsSingleSymbolRenderer(symbol))
@@ -442,3 +448,65 @@ def style_base_3d_2d(layer):
     })
     layer.setRenderer(QgsSingleSymbolRenderer(symbol))
     layer.triggerRepaint()
+
+
+def set_layer_color(layer, color_hex, category_val=None):
+    if layer is None:
+        return
+    from qgis.core import QgsCategorizedSymbolRenderer, QgsSingleSymbolRenderer
+    from qgis.PyQt.QtGui import QColor
+    
+    renderer = layer.renderer()
+    if category_val is not None and isinstance(renderer, QgsCategorizedSymbolRenderer):
+        for i, cat in enumerate(renderer.categories()):
+            if str(cat.value()).lower() == str(category_val).lower():
+                sym = cat.symbol().clone()
+                sym.setColor(QColor(color_hex))
+                renderer.updateCategorySymbol(i, sym)
+                break
+    elif isinstance(renderer, QgsSingleSymbolRenderer):
+        sym = renderer.symbol().clone()
+        sym.setColor(QColor(color_hex))
+        renderer.setSymbol(sym)
+    layer.triggerRepaint()
+
+
+def set_trees_size(layer, size):
+    if layer is None:
+        return
+    from qgis.core import QgsSingleSymbolRenderer
+    renderer = layer.renderer()
+    if isinstance(renderer, QgsSingleSymbolRenderer):
+        sym = renderer.symbol().clone()
+        if hasattr(sym, "setSize"):
+            sym.setSize(float(size))
+            renderer.setSymbol(sym)
+    layer.triggerRepaint()
+
+
+def get_layer_color(layer, category_val=None) -> str:
+    """Get the color of a layer or category as a hex string."""
+    if layer is None:
+        return ""
+    from qgis.core import QgsCategorizedSymbolRenderer, QgsSingleSymbolRenderer
+    renderer = layer.renderer()
+    if category_val is not None and isinstance(renderer, QgsCategorizedSymbolRenderer):
+        for cat in renderer.categories():
+            if str(cat.value()).lower() == str(category_val).lower():
+                return cat.symbol().color().name()
+    elif isinstance(renderer, QgsSingleSymbolRenderer):
+        return renderer.symbol().color().name()
+    return ""
+
+
+def get_trees_size(layer) -> float:
+    """Get the marker size of the tree layer."""
+    if layer is None:
+        return 1.8
+    from qgis.core import QgsSingleSymbolRenderer
+    renderer = layer.renderer()
+    if isinstance(renderer, QgsSingleSymbolRenderer):
+        sym = renderer.symbol()
+        if hasattr(sym, "size"):
+            return sym.size()
+    return 1.8
