@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 import os
+import random
 import tempfile
 import time
 import urllib.error
@@ -193,10 +194,17 @@ def _overpass_query(min_lat: float, min_lon: float, max_lat: float, max_lon: flo
   way["building"]({bbox});
   relation["building"]({bbox});
   way["highway"]({bbox});
-  way["waterway"~"river|stream|canal|drain|ditch"]({bbox});
-  way["leisure"~"park|garden|playground|pitch"]({bbox});
-  way["landuse"~"forest|grass|meadow|recreation_ground|cemetery"]({bbox});
-  way["natural"~"wood|scrub"]({bbox});
+  way["waterway"~"river|stream|canal|drain|ditch|riverbank"]({bbox});
+  way["leisure"~"park|garden|playground|pitch|nature_reserve|common|dog_park|golf_course"]({bbox});
+  relation["leisure"~"park|garden|playground|pitch|nature_reserve|common|dog_park|golf_course"]({bbox});
+  way["landuse"~"forest|grass|meadow|recreation_ground|cemetery|reservoir|basin|village_green|orchard|vineyard|farmland|allotments|greenfield"]({bbox});
+  relation["landuse"~"forest|grass|meadow|recreation_ground|cemetery|reservoir|basin|village_green|orchard|vineyard|farmland|allotments|greenfield"]({bbox});
+  way["natural"~"wood|scrub|water|grassland|heath"]({bbox});
+  relation["natural"~"wood|scrub|water|grassland|heath"]({bbox});
+  way["amenity"~"parking|marketplace"]({bbox});
+  relation["amenity"~"parking|marketplace"]({bbox});
+  way["place"="square"]({bbox});
+  relation["place"="square"]({bbox});
   node["natural"="tree"]({bbox});
   node["highway"="bus_stop"]({bbox});
   node["amenity"="bench"]({bbox});
@@ -352,6 +360,130 @@ def _tag(tags: dict, key: str) -> str:
     return (tags.get(key) or "").strip().lower()
 
 
+def _is_water_area(tags: dict) -> bool:
+    """True for an OSM polygon that should render as open water (a filled surface)."""
+    if tags.get("natural") == "water":
+        return True
+    if tags.get("waterway") == "riverbank":
+        return True
+    if tags.get("landuse") in ("reservoir", "basin"):
+        return True
+    return bool((tags.get("water") or "").strip())
+
+
+def _is_paved_area(tags: dict) -> bool:
+    """True for an OSM polygon that should render as a paved public square/plaza."""
+    if tags.get("highway") in ("pedestrian", "footway", "living_street") and tags.get("area") == "yes":
+        return True
+    if tags.get("place") == "square":
+        return True
+    return tags.get("amenity") == "marketplace"
+
+
+# Tree scatter config
+_TREE_SCATTER = {
+    "forest": (75.0, 7.0, 13.0), "wood": (75.0, 7.0, 13.0),
+    "orchard": (110.0, 4.0, 7.0),
+    "park": (170.0, 5.0, 9.0), "garden": (210.0, 4.0, 7.0), "nature_reserve": (180.0, 5.0, 10.0),
+    "village_green": (220.0, 4.0, 8.0), "recreation_ground": (230.0, 4.0, 8.0),
+    "cemetery": (260.0, 5.0, 9.0), "scrub": (280.0, 2.5, 4.5), "allotments": (320.0, 3.0, 5.0),
+    "grass": (400.0, 3.0, 6.0), "meadow": (440.0, 3.0, 6.0),
+}
+MAX_SCATTER_TREES = 500
+MAX_SCATTER_PER_POLY = 130
+
+
+def _green_scatter_kind(tags: dict) -> str:
+    """Return the tree-bearing green type for ``tags``, or '' if none should scatter."""
+    for value in (_tag(tags, "landuse"), _tag(tags, "leisure"), _tag(tags, "natural")):
+        if value in _TREE_SCATTER:
+            return value
+    return ""
+
+
+def _scatter_trees(geom_utm: QgsGeometry, kind: str, provider, remaining: int) -> int:
+    """Scatter up to ``remaining`` trees inside ``geom_utm``."""
+    cfg = _TREE_SCATTER.get(kind)
+    if not cfg or remaining <= 0:
+        return 0
+    spacing_area, h_min, h_max = cfg
+    area = geom_utm.area()
+    if area < spacing_area * 2.0:
+        return 0
+    target = int(min(MAX_SCATTER_PER_POLY, remaining, area / spacing_area))
+    if target <= 0:
+        return 0
+    bbox = geom_utm.boundingBox()
+    kind_code = sum((i + 1) * ord(c) for i, c in enumerate(kind))
+    seed = ((int(round(bbox.xMinimum())) * 73856093)
+            ^ (int(round(bbox.yMinimum())) * 19349663)
+            ^ (int(round(area)) * 83492791)
+            ^ (kind_code * 2654435761)) & 0xFFFFFFFF
+    rng = random.Random(seed)
+    feats = []
+    attempts = 0
+    max_attempts = target * 8
+    while len(feats) < target and attempts < max_attempts:
+        attempts += 1
+        px = rng.uniform(bbox.xMinimum(), bbox.xMaximum())
+        py = rng.uniform(bbox.yMinimum(), bbox.yMaximum())
+        pt = QgsGeometry.fromPointXY(QgsPointXY(px, py))
+        if not geom_utm.contains(pt):
+            continue
+        feat = QgsFeature()
+        feat.setGeometry(pt)
+        feat.setAttributes([f"scatter_{int(px)}_{int(py)}", "tree", round(rng.uniform(h_min, h_max), 1)])
+        feats.append(feat)
+    if feats:
+        provider.addFeatures(feats)
+    return len(feats)
+
+
+def _ring_from_geometry(geometry) -> QgsGeometry | None:
+    """Build a closed-ring polygon from an Overpass member/way ``geometry`` list."""
+    pts = [QgsPointXY(pt["lon"], pt["lat"])
+           for pt in (geometry or []) if "lon" in pt and "lat" in pt]
+    if len(pts) < 3:
+        return None
+    if pts[0] != pts[-1]:
+        pts.append(pts[0])
+    ring = QgsGeometry.fromPolygonXY([pts])
+    return ring if ring and not ring.isEmpty() else None
+
+
+def _relation_multipolygon(element) -> QgsGeometry | None:
+    """Assemble a (multi)polygon from a relation's outer/inner member ways."""
+    outers, inners = [], []
+    for member in (element.get("members") or []):
+        if member.get("type") != "way":
+            continue
+        ring = _ring_from_geometry(member.get("geometry"))
+        if ring is None:
+            continue
+        (inners if (member.get("role") or "").lower() == "inner" else outers).append(ring)
+    if not outers:
+        return None
+    poly = outers[0]
+    for extra in outers[1:]:
+        merged = poly.combine(extra)
+        if merged and not merged.isEmpty():
+            poly = merged
+    for hole in inners:
+        cut = poly.difference(hole)
+        if cut and not cut.isEmpty():
+            poly = cut
+    if poly is None or poly.isEmpty():
+        return None
+    return poly
+
+
+def _element_polygon(element) -> QgsGeometry | None:
+    """Polygon for a building/green element: relation -> multipolygon, else ring."""
+    if element.get("type") == "relation":
+        return _relation_multipolygon(element)
+    return _way_polygon(element)
+
+
 def _way_polygon(element) -> QgsGeometry | None:
     geometry = element.get("geometry") or []
     if len(geometry) < 3:
@@ -492,7 +624,9 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
     greens_layer, g_pr = _make_layer(
         "OSM Greens", "MultiPolygon", epsg_dest,
         [("osm_id", QVariant.String), ("leisure", QVariant.String),
-         ("landuse", QVariant.String), ("natural", QVariant.String), ("name", QVariant.String)],
+         ("landuse", QVariant.String), ("natural", QVariant.String),
+         ("amenity", QVariant.String), ("highway", QVariant.String),
+         ("place", QVariant.String), ("name", QVariant.String)],
     )
     trees_layer, t_pr = _make_layer(
         "OSM Trees", "Point", epsg_dest,
@@ -504,6 +638,11 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
         "OSM Waterlines", "MultiLineString", epsg_dest,
         [("osm_id", QVariant.String), ("waterway", QVariant.String),
          ("width", QVariant.Double), ("name", QVariant.String)],
+    )
+    waterareas_layer, wa_pr = _make_layer(
+        "OSM Water areas", "MultiPolygon", epsg_dest,
+        [("osm_id", QVariant.String), ("natural", QVariant.String),
+         ("waterway", QVariant.String), ("landuse", QVariant.String), ("name", QVariant.String)],
     )
     # Street furniture as points — one layer per viewer input (mybusstops,
     # mybenches, mylights, mytrashbins).
@@ -523,7 +662,8 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
 
     counts = {
         "buildings": 0, "roads": 0, "bikelanes": 0, "greens": 0, "trees": 0,
-        "waterlines": 0, "busstops": 0, "benches": 0, "lights": 0,
+        "trees_scattered": 0, "parking": 0, "plazas": 0, "waterlines": 0,
+        "waterareas": 0, "busstops": 0, "benches": 0, "lights": 0,
         "trashbins": 0, "skipped": 0,
     }
 
@@ -539,6 +679,7 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
             return g if g.within(area_utm) else None
         return clipped
 
+    scattered_trees = 0
     for element in elements:
         etype = element.get("type")
         tags = element.get("tags") or {}
@@ -599,7 +740,7 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
             continue
 
         if etype in ("way", "relation") and tags.get("building"):
-            base = _way_polygon(element)
+            base = _element_polygon(element)
             if not base:
                 continue
             clipped = clip_to_area(base)
@@ -626,6 +767,67 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
             ])
             b_pr.addFeatures([feat])
             counts["buildings"] += 1
+            continue
+
+        # Water areas (lakes, ponds, riverbanks, reservoirs, bays).
+        if etype in ("way", "relation") and _is_water_area(tags):
+            base = _element_polygon(element)
+            if not base:
+                continue
+            clipped = clip_to_area(base)
+            if clipped is None:
+                counts["skipped"] += 1
+                continue
+            feat = QgsFeature()
+            feat.setGeometry(clipped)
+            feat.setAttributes([
+                str(element.get("id", "")),
+                _tag(tags, "natural"), _tag(tags, "waterway"), _tag(tags, "landuse"),
+                tags.get("name", ""),
+            ])
+            wa_pr.addFeatures([feat])
+            counts["waterareas"] += 1
+            continue
+
+        # Parking lots
+        if etype in ("way", "relation") and tags.get("amenity") == "parking":
+            base = _element_polygon(element)
+            if not base:
+                continue
+            clipped = clip_to_area(base)
+            if clipped is None:
+                counts["skipped"] += 1
+                continue
+            feat = QgsFeature()
+            feat.setGeometry(clipped)
+            feat.setAttributes([
+                str(element.get("id", "")), "", "", "",
+                "parking", "", "", tags.get("name", "")
+            ])
+            g_pr.addFeatures([feat])
+            counts["greens"] += 1
+            counts["parking"] += 1
+            continue
+
+        # Paved public squares/plazas
+        if etype in ("way", "relation") and _is_paved_area(tags):
+            base = _element_polygon(element)
+            if not base:
+                continue
+            clipped = clip_to_area(base)
+            if clipped is None:
+                counts["skipped"] += 1
+                continue
+            feat = QgsFeature()
+            feat.setGeometry(clipped)
+            feat.setAttributes([
+                str(element.get("id", "")), "", "", "",
+                _tag(tags, "amenity"), _tag(tags, "highway"), _tag(tags, "place"),
+                tags.get("name", "")
+            ])
+            g_pr.addFeatures([feat])
+            counts["greens"] += 1
+            counts["plazas"] += 1
             continue
 
         if etype == "way" and tags.get("highway"):
@@ -674,8 +876,8 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
             counts["waterlines"] += 1
             continue
 
-        if etype == "way" and (tags.get("leisure") or tags.get("landuse") or tags.get("natural")):
-            base = _way_polygon(element)
+        if etype in ("way", "relation") and (tags.get("leisure") or tags.get("landuse") or tags.get("natural")):
+            base = _element_polygon(element)
             if not base:
                 continue
             clipped = clip_to_area(base)
@@ -687,16 +889,22 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
             feat.setAttributes([
                 str(element.get("id", "")),
                 _tag(tags, "leisure"), _tag(tags, "landuse"), _tag(tags, "natural"),
-                tags.get("name", ""),
+                "", "", "", tags.get("name", ""),
             ])
             g_pr.addFeatures([feat])
             counts["greens"] += 1
+            kind = _green_scatter_kind(tags)
+            if kind:
+                placed = _scatter_trees(clipped, kind, t_pr, MAX_SCATTER_TREES - scattered_trees)
+                scattered_trees += placed
+                counts["trees"] += placed
+                counts["trees_scattered"] += placed
             continue
 
         counts["skipped"] += 1
 
     for layer in (buildings_layer, roads_layer, bikelanes_layer, greens_layer, trees_layer,
-                  waterlines_layer, busstops_layer, benches_layer, lights_layer, trashbins_layer):
+                  waterlines_layer, waterareas_layer, busstops_layer, benches_layer, lights_layer, trashbins_layer):
         layer.updateExtents()
 
     return {
@@ -708,6 +916,7 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
         "greens": greens_layer,
         "trees": trees_layer,
         "waterlines": waterlines_layer,
+        "waterareas": waterareas_layer,
         "busstops": busstops_layer,
         "benches": benches_layer,
         "lights": lights_layer,

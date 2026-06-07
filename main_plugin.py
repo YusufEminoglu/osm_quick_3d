@@ -125,6 +125,7 @@ class OsmQuick3DPlugin:
         color_mode = p.get("building_color", styling.BUILDING_COLOR_FUNCTION)
         return [
             ("greens", p["want_greens"], styling.style_greens),
+            ("waterareas", p["want_water"], styling.style_waterareas),
             ("waterlines", p["want_water"], styling.style_water),
             ("bikelanes", p["want_roads"], styling.style_bikelanes),
             ("roads", p["want_roads"], styling.style_roads),

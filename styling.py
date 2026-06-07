@@ -47,6 +47,8 @@ GREEN_COLORS = {
     "pitch": "#b6cf93",
     "cemetery": "#9bae8f",
     "green": "#a7b98f",
+    "parking": "#cbd1d6",     # asphalt grey
+    "pedestrian": "#e3e1db",  # stone/paved light grey
 }
 
 # OSM tag values are emitted lower-cased by osm_download; lower() here is a
@@ -78,9 +80,11 @@ ROAD_CLASS_EXPR = (
 )
 GREEN_CLASS_EXPR = (
     "CASE"
-    " WHEN lower(\"leisure\") IN ('park','garden') OR lower(\"landuse\") IN ('grass','recreation_ground','meadow') THEN 'park'"
-    " WHEN lower(\"landuse\") = 'forest' OR lower(\"natural\") IN ('wood','scrub') THEN 'forest'"
-    " WHEN lower(\"leisure\") IN ('pitch','playground') THEN 'pitch'"
+    " WHEN lower(\"amenity\") = 'parking' OR lower(\"landuse\") = 'parking' THEN 'parking'"
+    " WHEN lower(\"highway\") IN ('pedestrian','footway','living_street') OR lower(\"place\") = 'square' OR lower(\"amenity\") = 'marketplace' THEN 'pedestrian'"
+    " WHEN lower(\"leisure\") IN ('park','garden') OR lower(\"landuse\") IN ('grass','recreation_ground','meadow','village_green','orchard','vineyard','farmland','allotments','greenfield') THEN 'park'"
+    " WHEN lower(\"landuse\") = 'forest' OR lower(\"natural\") IN ('wood','woodland','scrub','grassland','heath','nature_reserve','common') THEN 'forest'"
+    " WHEN lower(\"leisure\") IN ('pitch','playground','dog_park','golf_course') THEN 'pitch'"
     " WHEN lower(\"landuse\") = 'cemetery' THEN 'cemetery'"
     " ELSE 'green' END"
 )
@@ -256,6 +260,11 @@ def style_greens(layer):
 
 def style_water(layer):
     layer.setRenderer(QgsSingleSymbolRenderer(_line("#6fa8c7", 0.9)))
+    layer.triggerRepaint()
+
+
+def style_waterareas(layer):
+    layer.setRenderer(QgsSingleSymbolRenderer(_fill("#a5c9eb", outline="#7298ba", outline_w=0.12)))
     layer.triggerRepaint()
 
 

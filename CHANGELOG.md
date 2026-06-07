@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.10.0] - 2026-06-07
+
+- Add relation multipolygon support, water areas, tree scattering, and car parks/plazas
+
 All notable changes to **OSM Quick 3D** are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 

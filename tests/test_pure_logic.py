@@ -22,13 +22,20 @@ PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # ── qgis stubs ───────────────────────────────────────────────────────────────
-class _Anything:
+class _MetaAnything(type):
+    def __getattr__(cls, name):
+        return _Anything
+
+
+class _Anything(metaclass=_MetaAnything):
     """A class whose every attribute/call returns another harmless stub."""
 
     def __init__(self, *args, **kwargs):
         pass
 
     def __getattr__(self, name):
+        if name == "isEmpty":
+            return lambda: False
         return _Anything()
 
     def __call__(self, *args, **kwargs):
@@ -187,12 +194,45 @@ def test_shape_and_base_constants():
     check("base buffer 5 m", osm.BASE_BUFFER_M == 5.0)
 
 
+def test_new_features():
+    print("new features (water areas, paved areas, tree scatter, relations)")
+    # _is_water_area
+    check("water natural", osm._is_water_area({"natural": "water"}) is True)
+    check("water riverbank", osm._is_water_area({"waterway": "riverbank"}) is True)
+    check("water reservoir", osm._is_water_area({"landuse": "reservoir"}) is True)
+    check("water other", osm._is_water_area({"water": "lake"}) is True)
+    check("not water", osm._is_water_area({"highway": "residential"}) is False)
+
+    # _is_paved_area
+    check("pedestrian area", osm._is_paved_area({"highway": "pedestrian", "area": "yes"}) is True)
+    check("place square", osm._is_paved_area({"place": "square"}) is True)
+    check("amenity marketplace", osm._is_paved_area({"amenity": "marketplace"}) is True)
+    check("not paved", osm._is_paved_area({"highway": "pedestrian"}) is False)
+
+    # _green_scatter_kind
+    check("scatter forest", osm._green_scatter_kind({"landuse": "forest"}) == "forest")
+    check("scatter park", osm._green_scatter_kind({"leisure": "park"}) == "park")
+    check("scatter grass", osm._green_scatter_kind({"natural": "grass"}) == "grass")
+    check("no scatter", osm._green_scatter_kind({"landuse": "residential"}) == "")
+
+    # _ring_from_geometry
+    geom_data = [{"lon": 0.0, "lat": 0.0}, {"lon": 1.0, "lat": 0.0}, {"lon": 1.0, "lat": 1.0}, {"lon": 0.0, "lat": 0.0}]
+    ring = osm._ring_from_geometry(geom_data)
+    check("ring created from geometry list", ring is not None)
+    
+    # Check green colors additions
+    check("parking is in green colors", "parking" in styling.GREEN_COLORS)
+    check("pedestrian is in green colors", "pedestrian" in styling.GREEN_COLORS)
+    check("parking in class expression", "parking" in styling.GREEN_CLASS_EXPR)
+    check("pedestrian in class expression", "pedestrian" in styling.GREEN_CLASS_EXPR)
+
+
 def main():
     for test in (test_parse_osm_number, test_building_levels, test_utm_epsg,
                  test_waterway_width, test_building_color_expression,
                  test_building_color_modes, test_extrusion_expression,
                  test_cache_roundtrip, test_clear_cache,
-                 test_shape_and_base_constants):
+                 test_shape_and_base_constants, test_new_features):
         test()
     print()
     if _failures:
