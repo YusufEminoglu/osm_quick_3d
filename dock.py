@@ -794,6 +794,43 @@ class PluginDockWidget(QDockWidget):
         s.setValue(f"{_S}/save_gpkg", p["save_gpkg"])
         s.setValue(f"{_S}/use_cache", p["use_cache"])
 
+    def _set_combo_data(self, combo, value):
+        idx = combo.findData(value)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+
+    def sync_from_run_params(self, p):
+        """Mirror Build-tab choices into the live controls used by the 3D tab."""
+        widgets = (
+            self.live_theme_combo,
+            self.live_height_scale,
+            self.live_building_color,
+            self.live_classification,
+            self.live_cb_labels,
+            self.live_cb_base,
+            self.live_map_resolution,
+        )
+        for widget in widgets:
+            widget.blockSignals(True)
+        try:
+            self._set_combo_data(self.live_theme_combo, p.get("theme", "default"))
+            self.live_height_scale.setValue(float(p.get("height_scale", 1.0)))
+            self._set_combo_data(
+                self.live_building_color,
+                p.get("building_color", styling.BUILDING_COLOR_FUNCTION),
+            )
+            self._set_combo_data(self.live_classification, p.get("classification", "continuous"))
+            self.live_cb_labels.setChecked(bool(p.get("want_labels", False)))
+            self.live_cb_base.setChecked(bool(p.get("want_base", True)))
+            self._set_combo_data(self.live_map_resolution, p.get("map_resolution", 1024))
+        except (TypeError, ValueError):
+            pass
+        finally:
+            for widget in widgets:
+                widget.blockSignals(False)
+        self._update_live_classification_enabled()
+        self._update_live_color_preview()
+
     def set_status(self, text, *, error=False):
         color = "#a32525" if error else "#245d39"
         border = "#efc4c4" if error else "#c9dfd0"

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.18.6] - 2026-06-08
+
+- Fix QGIS 4 compatibility, basemap underlay movement, and 3D dock state sync
+
 ## [0.18.5] - 2026-06-08
 
 - Remove unsafe QWindowContainer embedding for QGIS 3.44 stability

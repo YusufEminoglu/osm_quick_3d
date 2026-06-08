@@ -1,9 +1,9 @@
 [general]
 name=OSM Quick 3D
 qgisMinimumVersion=3.28
-qgisMaximumVersion=3.99
+qgisMaximumVersion=4.99
 description=One-click OpenStreetMap into native QGIS: function-styled layers plus flat-roof 3D building massing on a selectable study-area shape (rectangle, rounded rectangle, circle or hexagon) over a recessed ground base, built for larger areas.
-version=0.18.5
+version=0.18.6
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 

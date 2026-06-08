@@ -246,16 +246,20 @@ class OsmQuick3DPlugin:
     def _setup_basemap_masking(self, basemap, group):
         if basemap is None or group is None:
             return
-        
-        # Move the basemap layer to the bottom of the group tree (below base)
+
+        # Move a clone of the existing layer-tree node; QGIS owns/deletes the
+        # original node when it is removed, so reusing that node is unsafe.
         try:
-            from qgis.core import QgsProject
             root = QgsProject.instance().layerTreeRoot()
             node = root.findLayer(basemap.id())
-            if node is not None:
-                parent = node.parent() or root
-                parent.removeChildNode(node)
-                group.addChildNode(node)
+            if node is None:
+                return
+            if node.parent() is group:
+                return
+            clone = node.clone()
+            parent = node.parent() or root
+            parent.removeChildNode(node)
+            group.addChildNode(clone)
         except Exception:
             pass
 
@@ -321,6 +325,10 @@ class OsmQuick3DPlugin:
             self._error("No layers selected", "Select at least one layer type.")
             return
 
+        theme = p.get("theme", "default")
+        color_mode = p.get("building_color", styling.BUILDING_COLOR_FUNCTION)
+        classification = p.get("classification", "continuous")
+
         try:
             rect, src_crs = self._area_rect_and_crs(p["area_source"])
             if rect.isEmpty():
@@ -365,7 +373,6 @@ class OsmQuick3DPlugin:
         
         try:
             # Apply theme background color to QGIS map canvas
-            theme = p.get("theme", "default")
             t_data = styling.THEMES.get(theme, styling.THEMES["default"])
             from qgis.PyQt.QtGui import QColor
             canvas.setCanvasColor(QColor(t_data["bg"]))
@@ -492,6 +499,11 @@ class OsmQuick3DPlugin:
         self.iface.messageBar().pushSuccess("OSM Quick 3D", summary)
         self._set_status(summary)
         self.show_dock()
+        if self.dock:
+            try:
+                self.dock.sync_from_run_params(p)
+            except Exception:
+                pass
         if p["open_3d"] and self.dock:
             opened_3d = self.dock.embed_3d_view(auto=False)
             from qgis.PyQt.QtCore import QTimer
