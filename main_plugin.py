@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """OSM Quick 3D — main plugin class.
 
-One toolbar button opens a dialog; on run it downloads OpenStreetMap for the
-chosen study area (rectangle, rounded rectangle, circle or hexagon), adds the
-layers to QGIS already styled by function, extrudes the buildings with native 3D
-symbology over a recessed ground base, and (optionally) opens a 3D Map View. No
-web server, no browser — built to scale to larger areas than the Three.js
-companion plugin (osm_3d_model).
+One toolbar button opens the controller dock; on run it downloads OpenStreetMap
+for the chosen study area (rectangle, rounded rectangle, circle, hexagon, or the
+user's own selected polygon), adds the layers to QGIS already styled by function,
+extrudes the buildings with native 3D symbology over a recessed ground base, and
+(optionally) opens a managed 3D Map View. No web server, no browser — built to
+scale to larger areas than the Three.js companion plugin (osm_3d_model).
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from qgis.PyQt.QtWidgets import QAction, QApplication, QFileDialog, QMessageBox
 from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
+    QgsGeometry,
     QgsProject,
     QgsRectangle,
     QgsVectorLayer,
@@ -26,6 +27,8 @@ from qgis.core import (
 from . import native3d, styling
 from .osm_download import (
     BASE_DEPTH_M,
+    SHAPE_POLYGON,
+    SHAPE_RECTANGLE,
     OsmDownloadError,
     build_base_layer,
     download_osm_for_area,
@@ -33,6 +36,19 @@ from .osm_download import (
     utm_epsg_for,
     write_layer_to_gpkg,
 )
+
+
+def _is_polygon_geometry(geom) -> bool:
+    """True for a (multi)polygon geometry across QGIS 3.x/4.x geometry-type enums.
+
+    ``QgsWkbTypes.GeometryType`` (3.x) and ``Qgis.GeometryType`` (4.x) both number
+    polygons as 2, and ``int()`` works on either sip- or Qt6-scoped enum, so this
+    stays correct without importing a version-specific enum name.
+    """
+    try:
+        return int(geom.type()) == 2
+    except Exception:
+        return False
 
 
 class OsmQuick3DPlugin:
@@ -44,7 +60,6 @@ class OsmQuick3DPlugin:
         self.icon_path = os.path.join(self.plugin_dir, "icons", "icon.png")
         self.action = None
         self.dock_action = None
-        self.dialog = None
         self.dock = None
 
     def initGui(self):
@@ -67,9 +82,6 @@ class OsmQuick3DPlugin:
         if self.dock_action:
             self.iface.removePluginMenu(self.MENU_NAME, self.dock_action)
             self.dock_action = None
-        if self.dialog:
-            self.dialog.close()
-            self.dialog = None
         if self.dock:
             try:
                 self.dock.cleanup_managed_3d()
@@ -103,20 +115,9 @@ class OsmQuick3DPlugin:
             self.iface.mainWindow().resizeDocks([self.dock], [430], horizontal)
         except Exception:
             pass
-    def show_dialog(self):
-        if self.dialog is None:
-            from .dialog import PluginDialog
-
-            self.dialog = PluginDialog(self.iface, self.iface.mainWindow())
-            self.dialog.runRequested.connect(self.run_action)
-        self.dialog.show()
-        self.dialog.raise_()
-        self.dialog.activateWindow()
 
     # ── helpers ────────────────────────────────────────────────────────────
     def _set_status(self, text, error=False):
-        if self.dialog:
-            self.dialog.set_status(text, error=error)
         if self.dock:
             self.dock.set_status(text, error=error)
         QApplication.processEvents()
@@ -160,6 +161,86 @@ class OsmQuick3DPlugin:
             )
             area_km2 = max_km2
         return urect, epsg, area_km2
+
+    def _selected_polygon_geom(self):
+        """Dissolved geometry of the active layer's selected polygon features.
+
+        Returns ``(QgsGeometry, source CRS)`` for the union of the selected polygon
+        features, or ``(None, None)`` when there is no usable polygon selection.
+        This is what the "Polygon" study-area shape works over, so the user can
+        clip OSM to their own outline rather than an inscribed rectangle shape.
+        """
+        layer = self.iface.activeLayer()
+        get_selected = getattr(layer, "selectedFeatures", None)
+        if get_selected is None:
+            return None, None
+        geoms = []
+        try:
+            for feat in get_selected():
+                g = feat.geometry()
+                if g is None or g.isEmpty() or not _is_polygon_geometry(g):
+                    continue
+                geoms.append(QgsGeometry(g))
+        except Exception:
+            return None, None
+        if not geoms:
+            return None, None
+        if len(geoms) == 1:
+            merged = geoms[0]
+        else:
+            merged = QgsGeometry.unaryUnion(geoms)
+            if merged is None or merged.isEmpty():
+                merged = geoms[0]
+        return merged, layer.crs()
+
+    def _resolve_study_area(self, p):
+        """Return ``(area geometry in UTM, EPSG, area_km2)`` for the chosen shape.
+
+        Geometric shapes (rectangle/rounded/circle/hexagon) are inscribed in the
+        canvas/selection extent, capped to ``max_km2``. ``polygon`` instead uses the
+        user's own selected polygon feature(s): reprojected to the area's UTM zone
+        and cropped to the same area cap, so a huge selection can't flood Overpass.
+        """
+        shape = p.get("shape", SHAPE_RECTANGLE)
+        max_km2 = p.get("max_km2", 6.0)
+        if shape == SHAPE_POLYGON:
+            geom, src_crs = self._selected_polygon_geom()
+            if geom is None:
+                raise ValueError(
+                    "Shape = Polygon needs a selected polygon feature. Select one "
+                    "(or several) polygons in the active layer and run again, or "
+                    "pick another shape."
+                )
+            rect = geom.boundingBox()
+            if rect.isEmpty():
+                raise ValueError("The selected polygon has no extent.")
+            urect, epsg, area_km2 = self._area_utm(rect, src_crs, max_km2)
+            area_utm = QgsGeometry(geom)
+            try:
+                to_utm = QgsCoordinateTransform(
+                    src_crs, QgsCoordinateReferenceSystem.fromEpsgId(epsg),
+                    QgsProject.instance())
+                area_utm.transform(to_utm)
+            except Exception:
+                raise ValueError("Could not reproject the selected polygon to a metric CRS.")
+            cap = QgsGeometry.fromRect(urect)
+            cropped = area_utm.intersection(cap)
+            if cropped is not None and not cropped.isEmpty():
+                area_utm = cropped
+            try:
+                if not area_utm.isGeosValid():
+                    fixed = area_utm.makeValid()
+                    if fixed is not None and not fixed.isEmpty():
+                        area_utm = fixed
+            except Exception:
+                pass
+            return area_utm, epsg, area_km2
+
+        rect, src_crs = self._area_rect_and_crs(p["area_source"])
+        if rect.isEmpty():
+            raise ValueError("Empty area. Zoom to a place on the map or select features.")
+        urect, epsg, area_km2 = self._area_utm(rect, src_crs, max_km2)
+        return shape_study_area(urect, shape), epsg, area_km2
 
     def _layer_specs(self, p):
         """(result key, wanted?, style function) in bottom-to-top draw order."""
@@ -333,11 +414,7 @@ class OsmQuick3DPlugin:
         classification = p.get("classification", "continuous")
 
         try:
-            rect, src_crs = self._area_rect_and_crs(p["area_source"])
-            if rect.isEmpty():
-                raise ValueError("Empty area. Zoom to a place on the map or select features.")
-            urect, epsg, area_km2 = self._area_utm(rect, src_crs, p["max_km2"])
-            area_utm = shape_study_area(urect, p.get("shape", "rectangle"))
+            area_utm, epsg, area_km2 = self._resolve_study_area(p)
         except ValueError as exc:
             self._error("Area error", str(exc))
             self._set_status(str(exc), error=True)

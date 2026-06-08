@@ -204,11 +204,35 @@ def test_clear_cache():
 
 def test_shape_and_base_constants():
     print("shape + base constants")
-    check("four area shapes", len(osm.AREA_SHAPES) == 4)
+    check("five area shapes", len(osm.AREA_SHAPES) == 5)
     check("rectangle in shapes", osm.SHAPE_RECTANGLE in osm.AREA_SHAPES)
     check("hexagon in shapes", osm.SHAPE_HEXAGON in osm.AREA_SHAPES)
+    check("polygon in shapes", osm.SHAPE_POLYGON in osm.AREA_SHAPES)
+    check("polygon value is 'polygon'", osm.SHAPE_POLYGON == "polygon")
     check("base depth 2 m", osm.BASE_DEPTH_M == 2.0)
     check("base buffer 5 m", osm.BASE_BUFFER_M == 5.0)
+
+
+def test_themes():
+    print("map themes (schema + new themes)")
+    required = ("label", "bg", "base", "roads_major", "roads_minor",
+                "greens", "water", "trees", "building_ramp", "building_colors")
+    functions = ("residential", "commercial", "industrial", "civic", "worship", "other")
+    for key, theme in styling.THEMES.items():
+        missing = [rk for rk in required if rk not in theme]
+        check(f"{key} has all keys", not missing)
+        ramp = theme.get("building_ramp")
+        check(f"{key} ramp is a 2-tuple", isinstance(ramp, tuple) and len(ramp) == 2)
+        bc = theme.get("building_colors", {})
+        check(f"{key} has all building functions", all(fn in bc for fn in functions))
+    for new_theme in ("anime", "desert", "candy", "vapor"):
+        check(f"new theme '{new_theme}' exists", new_theme in styling.THEMES)
+        fexpr = styling.building_color_expression("function", theme=new_theme)
+        check(f"{new_theme} function expr is CASE", fexpr.startswith("CASE"))
+        rexpr = styling.building_color_expression("height", theme=new_theme)
+        check(f"{new_theme} height ramp is color_rgb", rexpr.startswith("color_rgb("))
+        base = styling.base_color_hex("function", theme=new_theme)
+        check(f"{new_theme} base is a 7-char hex", base.startswith("#") and len(base) == 7)
 
 
 def test_geometry_transform_result_helper():
@@ -257,7 +281,8 @@ def main():
                  test_waterway_width, test_building_color_expression,
                  test_road_width_and_themes, test_building_color_modes, test_extrusion_expression,
                  test_cache_roundtrip, test_clear_cache,
-                 test_shape_and_base_constants, test_geometry_transform_result_helper,
+                 test_shape_and_base_constants, test_themes,
+                 test_geometry_transform_result_helper,
                  test_new_features):
         test()
     print()

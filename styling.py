@@ -218,6 +218,82 @@ THEMES = {
             "other": "#98a0a6",
         },
     },
+    "anime": {
+        "label": "Anime Cel (Bright / Cartoon)",
+        "bg": "#dff3ff",
+        "base": "#9fb6c4",
+        "roads_major": "#ff7a8a",
+        "roads_minor": "#ffe9c2",
+        "greens": "#7ed957",
+        "water": "#4fc3f7",
+        "trees": "#3fa34d",
+        "building_ramp": ("#fde3b8", "#e8743c"),
+        "building_colors": {
+            "residential": "#ffd28a",
+            "commercial": "#8ed1ff",
+            "industrial": "#c0a3ff",
+            "civic": "#a0e8a0",
+            "worship": "#ffb3d9",
+            "other": "#ffe07a",
+        },
+    },
+    "desert": {
+        "label": "Desert Dunes (Warm / Arid)",
+        "bg": "#f6e7c8",
+        "base": "#b79b6e",
+        "roads_major": "#b5502f",
+        "roads_minor": "#ead7b0",
+        "greens": "#9caa6e",
+        "water": "#6bb3c0",
+        "trees": "#7a8c4f",
+        "building_ramp": ("#f1dcb6", "#a9683f"),
+        "building_colors": {
+            "residential": "#e8c79a",
+            "commercial": "#cdb892",
+            "industrial": "#bfa477",
+            "civic": "#d8c4a0",
+            "worship": "#caa57a",
+            "other": "#d9c6a3",
+        },
+    },
+    "candy": {
+        "label": "Pastel Candy (Soft / Kawaii)",
+        "bg": "#fff5fb",
+        "base": "#e7c9dd",
+        "roads_major": "#ff9ec4",
+        "roads_minor": "#ffe3f1",
+        "greens": "#bde8b5",
+        "water": "#aee0f5",
+        "trees": "#86cf9a",
+        "building_ramp": ("#fde7f3", "#c79ad6"),
+        "building_colors": {
+            "residential": "#ffd1e3",
+            "commercial": "#cfe3ff",
+            "industrial": "#e6dcff",
+            "civic": "#d2f0dd",
+            "worship": "#ffe1c2",
+            "other": "#f3e6ff",
+        },
+    },
+    "vapor": {
+        "label": "Vaporwave (Neon / Retro)",
+        "bg": "#2a1a4a",
+        "base": "#3a2563",
+        "roads_major": "#ff71ce",
+        "roads_minor": "#4b3a7a",
+        "greens": "#2c5a6b",
+        "water": "#01cdfe",
+        "trees": "#05ffa1",
+        "building_ramp": ("#3a2c63", "#ff71ce"),
+        "building_colors": {
+            "residential": "#b967ff",
+            "commercial": "#01cdfe",
+            "industrial": "#7a5cff",
+            "civic": "#05ffa1",
+            "worship": "#ff71ce",
+            "other": "#fffb96",
+        },
+    },
 }
 
 # OSM tag values are emitted lower-cased by osm_download; lower() here is a
@@ -673,7 +749,12 @@ def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_
     outline = _scale_hex(slab, 1.25)
     try:
         from qgis.PyQt.QtGui import QPainter
-        layer.setBlendMode(QPainter.CompositionMode_SourceOver)
+        # Qt6 scopes the enum (QPainter.CompositionMode.*); Qt5 exposes it flat.
+        try:
+            source_over = QPainter.CompositionMode.CompositionMode_SourceOver
+        except AttributeError:
+            source_over = QPainter.CompositionMode_SourceOver
+        layer.setBlendMode(source_over)
     except Exception:
         pass
     if transparent:

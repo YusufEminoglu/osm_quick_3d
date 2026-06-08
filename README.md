@@ -6,13 +6,13 @@ OSM Quick 3D is the native sibling of [`osm_3d_model`](https://github.com/YusufE
 
 ## What it does
 
-1. Pick the **visible map area** (or the extent of your **selected features**) and a **study-area shape** — rectangle, rounded rectangle, circle or hexagon. Features are clipped to that shape.
+1. Pick the **visible map area** (or the extent of your **selected features**) and a **study-area shape** — rectangle, rounded rectangle, circle, hexagon, or your **own selected polygon**. Features are clipped to that shape. (Polygon mode clips OSM to the polygon feature(s) you have selected in the active layer, so you can work over any custom boundary.)
 2. It downloads OSM via Overpass — buildings, roads, cycleways, water, greens, trees, street furniture.
 3. The layers are added to your project — inside one tidy **layer-tree group** — as native layers **already styled by function**:
    - buildings by OSM use (residential / commercial / industrial / civic / worship)
    - roads by `highway` class — colour and metric width, using OSM `width` when available
    - water blue, greens green
-4. Buildings are **extruded** with native QGIS 3D symbology — a clean **flat-roof massing** model. Height comes from OSM: `coalesce("height", "building_levels" * 3, 9)` m. **Building colours are selectable** (and identical in 2D and 3D): by OSM function, or a soft height-graduated tint — **gray, warm, teal, salmon, purple or sand**. A **height-exaggeration** factor (0.5×–5.0×) makes low-rise districts read. No roofs, no animation.
+4. Buildings are **extruded** with native QGIS 3D symbology — a clean **flat-roof massing** model. Height comes from OSM: `coalesce("height", "building_levels" * 3, 9)` m. **Building colours are selectable** (and identical in 2D and 3D): by OSM function, or a soft height-graduated tint — **gray, warm, teal, salmon, purple or sand**. A whole-scene **map theme** can be picked too (Muted Planning, Tokyo Cyber, Editorial Paper, Nordic Frost, Monochrome Noir, Civic Atlas, Mediterranean, Night Print, **Anime Cel**, **Desert Dunes**, **Pastel Candy** and **Vaporwave**), recolouring buildings, roads, water and greens at once. A **height-exaggeration** factor (0.5×–5.0×) makes low-rise districts read. No roofs, no animation.
 5. Trees get a matching **3D pass** — simple green canopies on the ground — when 3D is on.
    - Each building also carries a computed **`footprint_m2`** and an estimated **`gfa_m2`** (footprint × floors) column, and the run reports the area totals — ready for quick planning quantities.
    - Optionally **label** buildings and roads by their OSM `name` (white halo).

@@ -41,7 +41,7 @@ OVERPASS_ENDPOINTS = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
-USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.9.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
+USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.19.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
 DEFAULT_TIMEOUT_S = 60
 
 # Disk cache for Overpass responses. The public API is frequently rate-limited
@@ -129,7 +129,11 @@ SHAPE_RECTANGLE = "rectangle"
 SHAPE_ROUNDED = "rounded"
 SHAPE_CIRCLE = "circle"
 SHAPE_HEXAGON = "hexagon"
-AREA_SHAPES = (SHAPE_RECTANGLE, SHAPE_ROUNDED, SHAPE_CIRCLE, SHAPE_HEXAGON)
+# "polygon" means: use the user's own selected polygon feature(s) as the exact
+# study area. Its geometry comes from the active layer's selection (resolved in
+# the plugin class), not from the rectangle, so it is not inscribed in an extent.
+SHAPE_POLYGON = "polygon"
+AREA_SHAPES = (SHAPE_RECTANGLE, SHAPE_ROUNDED, SHAPE_CIRCLE, SHAPE_HEXAGON, SHAPE_POLYGON)
 
 
 def shape_study_area(rect: QgsRectangle, shape: str) -> QgsGeometry:
@@ -139,6 +143,10 @@ def shape_study_area(rect: QgsRectangle, shape: str) -> QgsGeometry:
     ``hexagon`` are inscribed in the shorter side so they stay within the extent.
     Everything downstream clips OSM features to this polygon, so the chosen shape
     is what actually gets exported.
+
+    ``polygon`` is not built here — it is the user's own selected feature, resolved
+    by the plugin class before clipping — so it falls through to the rectangle as a
+    safe fallback if this function is ever called with it directly.
     """
     shape = (shape or SHAPE_RECTANGLE).lower()
     cx = (rect.xMinimum() + rect.xMaximum()) / 2.0

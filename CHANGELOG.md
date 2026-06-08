@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.19.0] - 2026-06-08
+
+- **Polygon study area**: a new **"Polygon (selected feature)"** shape clips OSM to your own selected polygon feature(s) in the active layer (dissolved if several, reprojected to the area's UTM zone and cropped to the Max-area cap), so you can work over any custom boundary — not only the inscribed rectangle/rounded/circle/hexagon shapes. Select the polygon(s) first, then run; a hint and a clear error guide the workflow.
+- **Four new map themes**: **Anime Cel** (bright cartoon), **Desert Dunes** (warm arid), **Pastel Candy** (soft kawaii) and **Vaporwave** (neon retro) — twelve themes in total. Each recolours buildings, roads, water, greens and the native 3D massing.
+- **Readable primary button**: the **"Download & build 3D"** button now pins its teal fill, border and white text together inline, so it can no longer fall back to unreadable white-on-grey on Qt styles that drop a stylesheet `background-color`.
+- **Clearer dock**: the **Build** and **Theme & Style** tabs now carry a one-line role banner (build first, then live-tune) so their shared controls read as intentional, not duplicated. The unused legacy modal dialog was removed.
+- **QGIS 4 hardening**: scoped-enum-safe `QgsMapLayerComboBox` layer filters and `QPainter` blend-mode lookup, alongside the existing defensive 3D/enum fallbacks.
+
 ## [0.18.9] - 2026-06-08
 
 - Remove the stale 3D panel, add 3D layer visibility, metric road widths, 2m base depth, and new themes

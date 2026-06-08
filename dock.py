@@ -33,6 +33,7 @@ from .osm_download import (
     BASE_DEPTH_M,
     SHAPE_CIRCLE,
     SHAPE_HEXAGON,
+    SHAPE_POLYGON,
     SHAPE_RECTANGLE,
     SHAPE_ROUNDED,
     clear_cache,
@@ -61,6 +62,16 @@ def _scroll_policy(name):
 
 def _size_policy(name):
     return _qt_value(QSizePolicy, "Policy", name)
+
+
+def _layer_filters():
+    """Raster|Vector filter for QgsMapLayerComboBox, across QGIS 3.x/4.x (Qt6 scopes
+    the enum under .Filter; Qt5 exposes the members flat on the class)."""
+    pm = QgsMapLayerProxyModel
+    try:
+        return pm.Filter.RasterLayer | pm.Filter.VectorLayer
+    except AttributeError:
+        return pm.RasterLayer | pm.VectorLayer
 
 
 class PluginDockWidget(QDockWidget):
@@ -355,8 +366,23 @@ class PluginDockWidget(QDockWidget):
         form.setVerticalSpacing(4)
         return form
 
+    def _role_hint(self, text):
+        """A small banner that explains what a tab is for, so the two tabs that
+        share some controls read as 'create now' vs 'tune live', not duplication."""
+        label = QLabel(text)
+        label.setWordWrap(True)
+        label.setStyleSheet(
+            "QLabel{color:#33555a;background:#e8f0ef;border:1px solid #cfe0de;"
+            "border-radius:6px;padding:6px 9px;font-size:10px;font-weight:600;}"
+        )
+        return label
+
     def _download_tab(self):
         tab, layout = self._scroll_tab()
+        layout.addWidget(self._role_hint(
+            "Build — download OSM and create the layers. These choices set the first "
+            "render; you fine-tune the look live in the Theme & Style tab afterwards."
+        ))
         layout.addWidget(self._download_area_group())
         layout.addWidget(self._download_layers_group())
         layout.addWidget(self._download_3d_group())
@@ -369,6 +395,22 @@ class PluginDockWidget(QDockWidget):
 
         self.run_btn = QPushButton("Download & build 3D")
         self.run_btn.setObjectName("PrimaryRun")
+        # Explicit inline style so the teal fill can't be dropped by a native Qt
+        # style. Some Windows/Qt6 styles ignore a stylesheet background-color unless
+        # border + padding are set together, which left white text on the default
+        # grey button face — unreadable. Setting them together pins the contrast.
+        self.run_btn.setStyleSheet(
+            "QPushButton{background-color:#2f756f;border:1px solid #2f756f;color:#ffffff;"
+            "font-weight:700;font-size:12px;border-radius:6px;padding:9px 14px;}"
+            "QPushButton:hover{background-color:#28645f;border-color:#28645f;color:#ffffff;}"
+            "QPushButton:pressed{background-color:#214f4b;border-color:#214f4b;color:#ffffff;}"
+            "QPushButton:disabled{background-color:#b9c6c5;border-color:#b9c6c5;color:#f1f5f4;}"
+        )
+        self.run_btn.setMinimumHeight(34)
+        try:
+            self.run_btn.setCursor(_qt_value(Qt, "CursorShape", "PointingHandCursor"))
+        except Exception:
+            pass
         self.run_btn.clicked.connect(self._emit_run)
         layout.addWidget(self.run_btn)
         return tab
@@ -387,7 +429,20 @@ class PluginDockWidget(QDockWidget):
         self.shape.addItem("Rounded rectangle", SHAPE_ROUNDED)
         self.shape.addItem("Circle", SHAPE_CIRCLE)
         self.shape.addItem("Hexagon", SHAPE_HEXAGON)
+        self.shape.addItem("Polygon (selected feature)", SHAPE_POLYGON)
+        self.shape.setToolTip(
+            "The study-area shape OSM is clipped to. Circle and hexagon are inscribed "
+            "in the shorter side of the extent. Polygon uses your own selected polygon "
+            "feature(s) in the active layer — select them first, then run."
+        )
+        self.shape.currentIndexChanged.connect(self._update_shape_hint)
         form.addRow("Shape:", self.shape)
+
+        self.shape_hint = QLabel("")
+        self.shape_hint.setWordWrap(True)
+        self.shape_hint.setStyleSheet("color:#9a6a1a;font-size:10px;font-weight:600;background:transparent;")
+        self.shape_hint.setVisible(False)
+        form.addRow("", self.shape_hint)
 
         self.max_km2 = QDoubleSpinBox()
         self.max_km2.setRange(0.1, 200.0)
@@ -420,7 +475,7 @@ class PluginDockWidget(QDockWidget):
         return box
 
     def _download_3d_group(self):
-        box = QGroupBox("3D Color")
+        box = QGroupBox("Initial appearance & 3D")
         form = self._configure_form(QFormLayout(box))
 
         self.cb_extrude = QCheckBox("3D extrusion")
@@ -480,7 +535,7 @@ class PluginDockWidget(QDockWidget):
         form = self._configure_form(QFormLayout(box))
 
         self.basemap = QgsMapLayerComboBox()
-        self.basemap.setFilters(QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
+        self.basemap.setFilters(_layer_filters())
         self.basemap.setAllowEmptyLayer(True)
         try:
             self.basemap.setCurrentLayer(None)
@@ -505,6 +560,10 @@ class PluginDockWidget(QDockWidget):
 
     def _live_tab(self):
         tab, layout = self._scroll_tab()
+        layout.addWidget(self._role_hint(
+            "Theme & Style — live editing of an existing result. Re-tunes the 2D map "
+            "and the managed 3D scene without re-downloading; build a result first."
+        ))
 
         scene_box = QGroupBox("Theme & Scene")
         scene_form = self._configure_form(QFormLayout(scene_box))
@@ -690,6 +749,18 @@ class PluginDockWidget(QDockWidget):
         self._update_scene_panel()
         return tab
 
+    def _update_shape_hint(self):
+        """Show a reminder when Polygon shape is picked (it needs a selection)."""
+        if not hasattr(self, "shape_hint"):
+            return
+        is_polygon = self.shape.currentData() == SHAPE_POLYGON
+        if is_polygon:
+            self.shape_hint.setText(
+                "Polygon mode clips OSM to your selected polygon feature(s) in the "
+                "active layer — select them before you run."
+            )
+        self.shape_hint.setVisible(is_polygon)
+
     def _on_clear_cache(self):
         removed, freed = clear_cache()
         if removed:
@@ -787,6 +858,7 @@ class PluginDockWidget(QDockWidget):
         self._update_download_color_preview()
         self._update_live_color_preview()
         self._update_theme_preview()
+        self._update_shape_hint()
 
     def _save(self, p):
         s = QgsSettings()
