@@ -102,7 +102,8 @@ class OsmQuick3DPlugin:
             pass
         
         from qgis.PyQt.QtCore import QTimer
-        QTimer.singleShot(500, self.dock.embed_3d_view)
+        for delay in (500, 1500, 3000):
+            QTimer.singleShot(delay, self.dock.embed_3d_view)
 
     def show_dialog(self):
         if self.dialog is None:
@@ -480,7 +481,8 @@ class OsmQuick3DPlugin:
         
         if p["open_3d"] and self.dock:
             from qgis.PyQt.QtCore import QTimer
-            QTimer.singleShot(1000, self.dock.embed_3d_view)
+            for delay in (1000, 2500, 4500):
+                QTimer.singleShot(delay, self.dock.embed_3d_view)
 
         summary = f"{total} features added: " + ", ".join(added) + f" (EPSG:{epsg})."
         totals = self._building_totals(buildings_layer)

@@ -97,6 +97,78 @@ def _clamp_to_terrain(symbol):
             continue
 
 
+def _refresh_3d_layer(layer):
+    """Force QGIS 3D views to notice a renderer change."""
+    for method in ("trigger3DUpdate", "request3DUpdate", "triggerRepaint"):
+        fn = getattr(layer, method, None)
+        if fn is None:
+            continue
+        try:
+            fn()
+        except Exception:
+            pass
+
+
+def _apply_symbol_extrusion_properties(symbol, height_scale=1.0):
+    try:
+        symbol.setExtrusionHeight(9.0 * float(height_scale or 1.0))
+    except Exception:
+        pass
+    try:
+        symbol.setAddBackFaces(True)
+    except Exception:
+        pass
+    try:
+        symbol.setRenderedFacade(3)
+    except Exception:
+        pass
+    try:
+        symbol.setEdgesEnabled(True)
+        from qgis.PyQt.QtGui import QColor
+        symbol.setEdgeColor(QColor("#2b3436"))
+        symbol.setEdgeWidth(0.15)
+    except Exception:
+        pass
+    try:
+        from qgis.core import QgsProperty
+        from qgis._3d import QgsPolygon3DSymbol
+        prop_key = getattr(QgsPolygon3DSymbol, "PropertyExtrusionHeight", None)
+        if prop_key is not None:
+            ddp = symbol.dataDefinedProperties()
+            ddp.setProperty(prop_key, QgsProperty.fromExpression(_extrusion_expression(height_scale)))
+            symbol.setDataDefinedProperties(ddp)
+    except Exception:
+        pass
+    _clamp_to_terrain(symbol)
+
+
+def _apply_single_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color_expr=None):
+    """Visibility-first 3D renderer used as a fallback for QGIS 3D rule quirks."""
+    try:
+        from qgis._3d import QgsVectorLayer3DRenderer, QgsPolygon3DSymbol
+    except Exception:
+        return False
+
+    symbol = QgsPolygon3DSymbol()
+    _apply_symbol_extrusion_properties(symbol, height_scale)
+    material = _make_material(color_hex)
+    _apply_material_color_expression(material, color_expr)
+    if material is not None:
+        try:
+            symbol.setMaterialSettings(material)
+        except Exception:
+            try:
+                symbol.setMaterial(material)
+            except Exception:
+                pass
+    try:
+        layer.setRenderer3D(QgsVectorLayer3DRenderer(symbol))
+        _refresh_3d_layer(layer)
+        return True
+    except Exception:
+        return False
+
+
 def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color_expr=None,
                              color_mode="function", classification="continuous", theme="default"):
     """Attach a 3D renderer that extrudes the building polygons.
@@ -179,24 +251,7 @@ def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color
     # helper to build a symbol with a specific color and height settings
     def make_building_symbol(color):
         sym = QgsPolygon3DSymbol()
-        # Set default extrusion height
-        try:
-            sym.setExtrusionHeight(9.0 * float(height_scale or 1.0))
-        except Exception:
-            pass
-        # Set data-defined height
-        try:
-            prop_key = getattr(QgsPolygon3DSymbol, "PropertyExtrusionHeight", None)
-            if prop_key is not None:
-                ddp = sym.dataDefinedProperties()
-                ddp.setProperty(prop_key, QgsProperty.fromExpression(_extrusion_expression(height_scale)))
-                sym.setDataDefinedProperties(ddp)
-        except Exception:
-            pass
-
-        _clamp_to_terrain(sym)
-
-        # Set material color
+        _apply_symbol_extrusion_properties(sym, height_scale)
         mat = _make_material(color)
         if mat is not None:
             for setter in ("setMaterialSettings", "setMaterial"):
@@ -293,9 +348,13 @@ def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color
             append_rule(make_rule(sym5, f"({h_expr}) > {b4:.4f}", f"> {b4:.1f}m"))
 
     # 3. Set the rule-based 3D renderer on the layer
-    renderer = QgsRuleBased3DRenderer(root_rule)
-    layer.setRenderer3D(renderer)
-    return True
+    try:
+        renderer = QgsRuleBased3DRenderer(root_rule)
+        layer.setRenderer3D(renderer)
+        _refresh_3d_layer(layer)
+        return True
+    except Exception:
+        return _apply_single_building_extrusion(layer, color_hex, height_scale, color_expr)
 
 
 def apply_base_slab(layer, depth=5.0, top_z=-0.15, color_hex="#5e7274"):
@@ -434,22 +493,98 @@ def apply_tree_3d(layer, color_hex="#5f9e4c"):
         return False
 
 
+def _object_identity(obj):
+    try:
+        class_name = obj.metaObject().className()
+    except Exception:
+        class_name = obj.__class__.__name__
+    object_name = ""
+    try:
+        object_name = obj.objectName() or ""
+    except Exception:
+        pass
+    window_title = ""
+    for getter in ("windowTitle", "title"):
+        try:
+            fn = getattr(obj, getter)
+            window_title = fn() or ""
+            if window_title:
+                break
+        except Exception:
+            continue
+    return class_name, object_name, window_title
+
+
+def _is_3d_canvas_object(obj):
+    try:
+        from qgis._3d import Qgs3DMapCanvas
+        if isinstance(obj, Qgs3DMapCanvas):
+            return True
+    except Exception:
+        pass
+    class_name, object_name, window_title = _object_identity(obj)
+    haystack = " ".join((class_name, object_name, window_title)).lower()
+    return "3d" in haystack and "map" in haystack and "canvas" in haystack
+
+
+def find_3d_map_canvases(iface):
+    """Return active Qgs3DMapCanvas objects from widgets and QWindow instances."""
+    candidates = []
+    try:
+        from qgis.PyQt.QtWidgets import QWidget
+        candidates.extend(iface.mainWindow().findChildren(QWidget))
+    except Exception:
+        pass
+    try:
+        from qgis.PyQt.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app is not None:
+            candidates.extend(app.allWidgets())
+            candidates.extend(app.allWindows())
+    except Exception:
+        pass
+
+    seen = set()
+    canvases = []
+    for obj in candidates:
+        ident = id(obj)
+        if ident in seen:
+            continue
+        seen.add(ident)
+        if _is_3d_canvas_object(obj):
+            canvases.append(obj)
+    return canvases
+
+
+def _project_3d_layers(iface):
+    try:
+        layers = list(iface.mapCanvas().layers())
+        if layers:
+            return layers
+    except Exception:
+        pass
+    try:
+        from qgis.core import QgsProject
+        return list(QgsProject.instance().mapLayers().values())
+    except Exception:
+        return []
+
+
 def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None):
     """Find all active Qgs3DMapCanvas widgets in the project and set their resolution/background."""
     try:
-        from qgis.PyQt.QtWidgets import QWidget
         from qgis.PyQt.QtGui import QColor
-        canvases = []
-        for w in iface.mainWindow().findChildren(QWidget):
-            try:
-                if w.metaObject().className() == "Qgs3DMapCanvas":
-                    canvases.append(w)
-            except Exception:
-                pass
+        canvases = find_3d_map_canvases(iface)
 
         for c3d in canvases:
             try:
                 settings = c3d.mapSettings()
+                try:
+                    layers = _project_3d_layers(iface)
+                    if layers and hasattr(settings, "setLayers"):
+                        settings.setLayers(layers)
+                except Exception:
+                    pass
 
                 # 1. Modern QGIS 3D API (terrainSettings)
                 applied = False
@@ -491,7 +626,15 @@ def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None):
                 except Exception:
                     pass
 
-                c3d.update()
+                for method in ("update", "requestUpdate"):
+                    fn = getattr(c3d, method, None)
+                    if fn is None:
+                        continue
+                    try:
+                        fn()
+                        break
+                    except Exception:
+                        continue
             except Exception:
                 pass
     except Exception:
@@ -538,10 +681,11 @@ def open_3d_view(iface, resolution=1024, bg_color_hex=None):
             pass
 
     if triggered:
-        # Give QGIS 3D Map View 600 ms to spawn, then apply the map tile resolution
+        # Give QGIS 3D Map View time to spawn, then apply settings repeatedly.
         try:
             from qgis.PyQt.QtCore import QTimer
-            QTimer.singleShot(600, lambda: set_3d_map_tile_resolution(iface, resolution, bg_color_hex))
+            for delay in (600, 1500, 3000):
+                QTimer.singleShot(delay, lambda: set_3d_map_tile_resolution(iface, resolution, bg_color_hex))
         except Exception:
             pass
         return True

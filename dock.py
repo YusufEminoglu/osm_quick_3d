@@ -97,7 +97,7 @@ class PluginDockWidget(QDockWidget):
         background: #ffffff;
         border: 1px solid #dce4e5;
         border-radius: 7px;
-        padding: 7px 9px;
+        padding: 5px 8px;
         font-size: 11px;
     }
     QGroupBox {
@@ -107,8 +107,8 @@ class PluginDockWidget(QDockWidget):
         border: 1px solid #dce4e5;
         border-left: 4px solid #3f8079;
         background-color: #ffffff;
-        margin-top: 20px;
-        padding: 18px 10px 10px 10px;
+        margin-top: 11px;
+        padding: 10px 7px 7px 7px;
         border-radius: 6px;
     }
     QGroupBox::title {
@@ -128,7 +128,7 @@ class PluginDockWidget(QDockWidget):
     }
     QCheckBox {
         spacing: 8px;
-        padding: 5px 0;
+        padding: 3px 0;
         color: #23383b;
         background: transparent;
         font-size: 11px;
@@ -145,7 +145,7 @@ class PluginDockWidget(QDockWidget):
         border-radius: 6px;
         padding: 4px 8px;
         background: #ffffff;
-        min-height: 22px;
+        min-height: 20px;
         font-size: 11px;
         color: #2d3d40;
         selection-background-color: #cfe4e1;
@@ -165,7 +165,7 @@ class PluginDockWidget(QDockWidget):
     }
     QPushButton {
         border-radius: 6px;
-        padding: 7px 12px;
+        padding: 5px 10px;
         background-color: #ffffff;
         border: 1px solid #c6d0d2;
         color: #405154;
@@ -184,7 +184,7 @@ class PluginDockWidget(QDockWidget):
         background-color: #2f756f;
         border: 1px solid #2f756f;
         color: #ffffff;
-        padding: 9px 14px;
+        padding: 7px 12px;
     }
     QPushButton#PrimaryRun:hover {
         background-color: #28645f;
@@ -201,11 +201,11 @@ class PluginDockWidget(QDockWidget):
         border-bottom-color: transparent;
         border-top-left-radius: 6px;
         border-top-right-radius: 6px;
-        min-width: 54px;
-        padding: 7px 8px;
+        min-width: 50px;
+        padding: 6px 7px;
         font-size: 11px;
         font-weight: 700;
-        margin-right: 2px;
+        margin-right: 1px;
     }
     QTabBar::tab:selected {
         background: #ffffff;
@@ -260,6 +260,7 @@ class PluginDockWidget(QDockWidget):
         self.resize(430, 720)
 
         self._embedded_canvas = None
+        self._embedded_container = None
         self._embedded_original_parent = None
         self._embedded_original_layout = None
         self._embedded_original_dock = None
@@ -308,7 +309,7 @@ class PluginDockWidget(QDockWidget):
         header = QFrame()
         header.setObjectName("Header")
         lay = QHBoxLayout(header)
-        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setContentsMargins(10, 7, 10, 7)
         lay.setSpacing(10)
 
         icon_path = os.path.join(os.path.dirname(__file__), "icons", "icon.png")
@@ -332,8 +333,8 @@ class PluginDockWidget(QDockWidget):
     def _scroll_tab(self):
         tab = QWidget()
         outer = QVBoxLayout(tab)
-        outer.setContentsMargins(8, 8, 8, 8)
-        outer.setSpacing(8)
+        outer.setContentsMargins(6, 6, 6, 6)
+        outer.setSpacing(5)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -345,7 +346,7 @@ class PluginDockWidget(QDockWidget):
         content.setSizePolicy(_size_policy("Preferred"), _size_policy("MinimumExpanding"))
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 4, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(5)
         scroll.setWidget(content)
         outer.addWidget(scroll, 1)
         return tab, layout
@@ -359,6 +360,9 @@ class PluginDockWidget(QDockWidget):
             form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         except AttributeError:
             form.setRowWrapPolicy(getattr(QFormLayout, "WrapLongRows"))
+        form.setContentsMargins(4, 2, 4, 4)
+        form.setHorizontalSpacing(8)
+        form.setVerticalSpacing(4)
         return form
 
     def _download_tab(self):
@@ -377,7 +381,6 @@ class PluginDockWidget(QDockWidget):
         self.run_btn.setObjectName("PrimaryRun")
         self.run_btn.clicked.connect(self._emit_run)
         layout.addWidget(self.run_btn)
-        layout.addStretch(1)
         return tab
 
     def _download_area_group(self):
@@ -407,9 +410,9 @@ class PluginDockWidget(QDockWidget):
     def _download_layers_group(self):
         box = QGroupBox("Layers")
         grid = QGridLayout(box)
-        grid.setContentsMargins(8, 8, 8, 8)
-        grid.setHorizontalSpacing(14)
-        grid.setVerticalSpacing(4)
+        grid.setContentsMargins(6, 4, 6, 4)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(2)
         self.cb_buildings = QCheckBox("Buildings")
         self.cb_roads = QCheckBox("Roads + cycleways")
         self.cb_water = QCheckBox("Water")
@@ -627,16 +630,17 @@ class PluginDockWidget(QDockWidget):
         self.trees_size.valueChanged.connect(self._apply_advanced_changes)
         detail_form.addRow("Tree size:", self.trees_size)
         layout.addWidget(detail_box)
-        layout.addStretch(1)
         return tab
 
     def _view_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
 
         controls = QHBoxLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setSpacing(5)
         self.open_3d_btn = QPushButton("Open")
         self.open_3d_btn.setToolTip("Open a QGIS 3D Map View and embed it here.")
         self.open_3d_btn.clicked.connect(self._on_open_3d_clicked)
@@ -792,7 +796,7 @@ class PluginDockWidget(QDockWidget):
         border = "#efc4c4" if error else "#c9dfd0"
         self.status.setStyleSheet(
             f"color:{color};background:#ffffff;border:1px solid {border};"
-            "border-radius:7px;padding:7px 9px;font-size:11px;"
+            "border-radius:7px;padding:5px 8px;font-size:11px;"
         )
         self.status.setText(text)
 
@@ -1204,7 +1208,8 @@ class PluginDockWidget(QDockWidget):
         )
         if opened:
             self.set_status("Opening 3D view...")
-            QTimer.singleShot(800, self.embed_3d_view)
+            for delay in (800, 1800, 3200):
+                QTimer.singleShot(delay, self.embed_3d_view)
         else:
             self.set_status("Could not open a 3D Map View automatically.", error=True)
 
@@ -1216,18 +1221,25 @@ class PluginDockWidget(QDockWidget):
             current = current.parent()
         return None
 
+    def _find_external_3d_dock(self):
+        try:
+            for dock in self.iface.mainWindow().findChildren(QDockWidget):
+                if dock is self:
+                    continue
+                text = f"{dock.windowTitle() or ''} {dock.objectName() or ''}".lower()
+                if "3d" in text and ("map" in text or "harita" in text):
+                    return dock
+        except Exception:
+            pass
+        return None
+
     def _find_3d_canvas(self):
         if self._embedded_canvas is not None:
             return self._embedded_canvas
-        for widget in self.iface.mainWindow().findChildren(QWidget):
-            try:
-                if widget.metaObject().className() != "Qgs3DMapCanvas":
-                    continue
-            except Exception:
-                continue
+        for widget in native3d.find_3d_map_canvases(self.iface):
             parent = widget.parent()
             while parent is not None:
-                if parent is self.view_host:
+                if parent is self.view_host or parent is self._embedded_container:
                     return widget
                 parent = parent.parent()
             return widget
@@ -1252,7 +1264,9 @@ class PluginDockWidget(QDockWidget):
             if self._embedded_original_parent is not None and hasattr(self._embedded_original_parent, "layout")
             else None
         )
-        self._embedded_original_dock = self._dock_for_widget(canvas)
+        self._embedded_original_dock = (
+            self._dock_for_widget(canvas) if isinstance(canvas, QWidget) else self._find_external_3d_dock()
+        )
 
         try:
             if self.view_layout.indexOf(self.view_placeholder) >= 0:
@@ -1266,12 +1280,31 @@ class PluginDockWidget(QDockWidget):
         except Exception:
             pass
         try:
-            canvas.setParent(self.view_host)
-            self.view_layout.addWidget(canvas, 1)
-            canvas.show()
-            canvas.update()
+            if isinstance(canvas, QWidget):
+                canvas.setParent(self.view_host)
+                canvas.setSizePolicy(_size_policy("Expanding"), _size_policy("Expanding"))
+                canvas.setMinimumSize(220, 180)
+                self.view_layout.addWidget(canvas, 1)
+                canvas.show()
+                canvas.update()
+            else:
+                self._embedded_container = QWidget.createWindowContainer(canvas, self.view_host)
+                self._embedded_container.setSizePolicy(_size_policy("Expanding"), _size_policy("Expanding"))
+                self._embedded_container.setMinimumSize(220, 180)
+                self.view_layout.addWidget(self._embedded_container, 1)
+                self._embedded_container.show()
+                for method in ("requestUpdate", "update"):
+                    fn = getattr(canvas, method, None)
+                    if fn is None:
+                        continue
+                    try:
+                        fn()
+                        break
+                    except Exception:
+                        continue
         except Exception:
             self._embedded_canvas = None
+            self._embedded_container = None
             if not auto:
                 self.set_status("The 3D view could not be embedded.", error=True)
             return False
@@ -1297,16 +1330,28 @@ class PluginDockWidget(QDockWidget):
         if canvas is None:
             return
 
-        try:
-            self.view_layout.removeWidget(canvas)
-        except Exception:
-            pass
+        if self._embedded_container is not None:
+            try:
+                self.view_layout.removeWidget(self._embedded_container)
+                self._embedded_container.setParent(None)
+                self._embedded_container.deleteLater()
+            except Exception:
+                pass
+        elif isinstance(canvas, QWidget):
+            try:
+                self.view_layout.removeWidget(canvas)
+            except Exception:
+                pass
         restored = False
         try:
-            if self._embedded_original_parent is not None:
+            if isinstance(canvas, QWidget) and self._embedded_original_parent is not None:
                 canvas.setParent(self._embedded_original_parent)
                 if self._embedded_original_layout is not None and self._embedded_original_layout.indexOf(canvas) < 0:
                     self._embedded_original_layout.addWidget(canvas)
+                canvas.show()
+                restored = True
+            elif self._embedded_original_parent is not None:
+                canvas.setParent(self._embedded_original_parent)
                 canvas.show()
                 restored = True
         except Exception:
@@ -1325,6 +1370,7 @@ class PluginDockWidget(QDockWidget):
                 pass
 
         self._embedded_canvas = None
+        self._embedded_container = None
         self._embedded_original_parent = None
         self._embedded_original_layout = None
         self._embedded_original_dock = None
