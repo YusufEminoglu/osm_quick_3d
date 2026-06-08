@@ -102,43 +102,43 @@ class PluginDockWidget(QDockWidget):
     }
     QGroupBox {
         font-weight: 700;
-        font-size: 11px;
-        color: #34474a;
+        font-size: 12px;
+        color: #21383b;
         border: 1px solid #dce4e5;
         border-left: 4px solid #3f8079;
         background-color: #ffffff;
-        margin-top: 10px;
-        padding: 12px 10px 10px 10px;
+        margin-top: 20px;
+        padding: 18px 10px 10px 10px;
         border-radius: 6px;
     }
     QGroupBox::title {
         subcontrol-origin: margin;
         subcontrol-position: top left;
-        left: 8px;
-        top: -6px;
-        padding: 0 4px;
-        color: #3f8079;
-        background: transparent;
+        left: 10px;
+        top: 1px;
+        padding: 1px 7px;
+        color: #1f625d;
+        background: #ffffff;
     }
     QLabel {
-        color: #405154;
+        color: #263b3e;
         font-size: 11px;
         font-weight: 500;
         background: transparent;
     }
     QCheckBox {
         spacing: 8px;
-        padding: 4px 0;
-        color: #2d3d40;
+        padding: 5px 0;
+        color: #23383b;
         background: transparent;
         font-size: 11px;
     }
-    QCheckBox::indicator {
-        width: 15px;
-        height: 15px;
-        border-radius: 4px;
-        border: 1px solid #c6d0d2;
-        background-color: #ffffff;
+    QCheckBox:checked {
+        color: #0f4f4a;
+        font-weight: 700;
+    }
+    QCheckBox:disabled {
+        color: #6d7f82;
     }
     QComboBox, QDoubleSpinBox {
         border: 1px solid #c6d0d2;
@@ -150,6 +150,11 @@ class PluginDockWidget(QDockWidget):
         color: #2d3d40;
         selection-background-color: #cfe4e1;
         selection-color: #21302f;
+    }
+    QComboBox:disabled, QDoubleSpinBox:disabled {
+        background: #edf1f2;
+        color: #52676a;
+        border-color: #d5dddf;
     }
     QComboBox:hover, QDoubleSpinBox:hover {
         border-color: #9bb5b7;
@@ -402,6 +407,9 @@ class PluginDockWidget(QDockWidget):
     def _download_layers_group(self):
         box = QGroupBox("Layers")
         grid = QGridLayout(box)
+        grid.setContentsMargins(8, 8, 8, 8)
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(4)
         self.cb_buildings = QCheckBox("Buildings")
         self.cb_roads = QCheckBox("Roads + cycleways")
         self.cb_water = QCheckBox("Water")
@@ -419,7 +427,7 @@ class PluginDockWidget(QDockWidget):
         return box
 
     def _download_3d_group(self):
-        box = QGroupBox("3D color")
+        box = QGroupBox("3D Color")
         form = self._configure_form(QFormLayout(box))
 
         self.cb_extrude = QCheckBox("3D extrusion")
@@ -501,27 +509,32 @@ class PluginDockWidget(QDockWidget):
     def _live_tab(self):
         tab, layout = self._scroll_tab()
 
-        target_box = QGroupBox("Group")
-        target_layout = QHBoxLayout(target_box)
+        scene_box = QGroupBox("Scene")
+        scene_form = self._configure_form(QFormLayout(scene_box))
+
+        target_row = QHBoxLayout()
         self.group_combo = QComboBox()
         self.group_combo.currentIndexChanged.connect(self._on_group_selected)
         self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.clicked.connect(self.refresh_groups)
-        target_layout.addWidget(self.group_combo, 1)
-        target_layout.addWidget(self.refresh_btn)
-        layout.addWidget(target_box)
+        target_row.addWidget(self.group_combo, 1)
+        target_row.addWidget(self.refresh_btn)
+        scene_form.addRow("Group:", target_row)
 
-        theme_box = QGroupBox("Theme")
-        theme_layout = QHBoxLayout(theme_box)
         self.live_theme_combo = QComboBox()
         for key, val in styling.THEMES.items():
             self.live_theme_combo.addItem(val["label"], key)
         self.live_theme_combo.currentIndexChanged.connect(self._on_live_theme_changed)
-        theme_layout.addWidget(self.live_theme_combo, 1)
-        layout.addWidget(theme_box)
+        scene_form.addRow("Theme:", self.live_theme_combo)
 
-        settings_box = QGroupBox("Buildings")
-        form = self._configure_form(QFormLayout(settings_box))
+        self.scene_bg_color = QgsColorButton()
+        self.scene_bg_color.setColor(QColor("#ffffff"))
+        self.scene_bg_color.colorChanged.connect(self._apply_scene_background)
+        scene_form.addRow("Background:", self.scene_bg_color)
+        layout.addWidget(scene_box)
+
+        building_box = QGroupBox("Building Visuals")
+        form = self._configure_form(QFormLayout(building_box))
 
         self.live_height_scale = QDoubleSpinBox()
         self.live_height_scale.setRange(0.5, 5.0)
@@ -551,6 +564,12 @@ class PluginDockWidget(QDockWidget):
         self.live_color_preview.setFixedHeight(12)
         form.addRow("", self.live_color_preview)
 
+        self.building_opacity = QSlider(Qt.Orientation.Horizontal)
+        self.building_opacity.setRange(0, 100)
+        self.building_opacity.setValue(100)
+        self.building_opacity.valueChanged.connect(self._apply_advanced_changes)
+        form.addRow("Opacity:", self.building_opacity)
+
         self.live_cb_labels = QCheckBox("Show name labels")
         self.live_cb_labels.toggled.connect(self._apply_changes)
         form.addRow("", self.live_cb_labels)
@@ -566,50 +585,48 @@ class PluginDockWidget(QDockWidget):
         self.live_map_resolution.addItem("Ultra (2048 px)", 2048)
         self.live_map_resolution.addItem("Insane (4096 px)", 4096)
         self.live_map_resolution.currentIndexChanged.connect(self._apply_resolution)
-        form.addRow("Map resolution:", self.live_map_resolution)
-        layout.addWidget(settings_box)
+        form.addRow("3D resolution:", self.live_map_resolution)
+        layout.addWidget(building_box)
 
-        layer_style_box = QGroupBox("Layers")
-        layer_form = self._configure_form(QFormLayout(layer_style_box))
-
-        self.building_opacity = QSlider(Qt.Orientation.Horizontal)
-        self.building_opacity.setRange(0, 100)
-        self.building_opacity.setValue(100)
-        self.building_opacity.valueChanged.connect(self._apply_advanced_changes)
-        layer_form.addRow("Buildings opacity:", self.building_opacity)
+        surface_box = QGroupBox("Surface Palette")
+        surface_form = self._configure_form(QFormLayout(surface_box))
 
         self.major_roads_color = QgsColorButton()
         self.major_roads_color.setColor(QColor("#e1846f"))
         self.major_roads_color.colorChanged.connect(self._apply_advanced_changes)
-        layer_form.addRow("Major roads:", self.major_roads_color)
+        surface_form.addRow("Major roads:", self.major_roads_color)
 
         self.minor_roads_color = QgsColorButton()
         self.minor_roads_color.setColor(QColor("#eae5da"))
         self.minor_roads_color.colorChanged.connect(self._apply_advanced_changes)
-        layer_form.addRow("Minor roads:", self.minor_roads_color)
+        surface_form.addRow("Minor roads:", self.minor_roads_color)
 
         self.greens_color = QgsColorButton()
         self.greens_color.setColor(QColor("#a9c08a"))
         self.greens_color.colorChanged.connect(self._apply_advanced_changes)
-        layer_form.addRow("Green areas:", self.greens_color)
+        surface_form.addRow("Green areas:", self.greens_color)
 
         self.water_color = QgsColorButton()
         self.water_color.setColor(QColor("#a5c9eb"))
         self.water_color.colorChanged.connect(self._apply_advanced_changes)
-        layer_form.addRow("Water:", self.water_color)
+        surface_form.addRow("Water:", self.water_color)
+        layout.addWidget(surface_box)
+
+        detail_box = QGroupBox("Detail Layers")
+        detail_form = self._configure_form(QFormLayout(detail_box))
 
         self.trees_color = QgsColorButton()
         self.trees_color.setColor(QColor("#6f9e5c"))
         self.trees_color.colorChanged.connect(self._apply_advanced_changes)
-        layer_form.addRow("Trees:", self.trees_color)
+        detail_form.addRow("Tree canopy:", self.trees_color)
 
         self.trees_size = QDoubleSpinBox()
         self.trees_size.setRange(0.5, 10.0)
         self.trees_size.setSingleStep(0.25)
         self.trees_size.setValue(1.8)
         self.trees_size.valueChanged.connect(self._apply_advanced_changes)
-        layer_form.addRow("Tree size:", self.trees_size)
-        layout.addWidget(layer_style_box)
+        detail_form.addRow("Tree size:", self.trees_size)
+        layout.addWidget(detail_box)
         layout.addStretch(1)
         return tab
 
@@ -797,6 +814,7 @@ class PluginDockWidget(QDockWidget):
     def _set_live_controls_enabled(self, enabled):
         controls = (
             self.live_theme_combo,
+            self.scene_bg_color,
             self.live_height_scale,
             self.live_building_color,
             self.live_classification,
@@ -825,6 +843,7 @@ class PluginDockWidget(QDockWidget):
 
         for widget in (
             self.live_theme_combo,
+            self.scene_bg_color,
             self.live_height_scale,
             self.live_building_color,
             self.live_classification,
@@ -857,6 +876,10 @@ class PluginDockWidget(QDockWidget):
         tidx = self.live_theme_combo.findData(detected_theme)
         if tidx >= 0:
             self.live_theme_combo.setCurrentIndex(tidx)
+        try:
+            self.scene_bg_color.setColor(self.iface.mapCanvas().canvasColor())
+        except Exception:
+            self.scene_bg_color.setColor(QColor(styling.THEMES.get(detected_theme, styling.THEMES["default"])["bg"]))
         midx = self.live_building_color.findData(detected_color_mode)
         if midx >= 0:
             self.live_building_color.setCurrentIndex(midx)
@@ -909,6 +932,7 @@ class PluginDockWidget(QDockWidget):
 
         for widget in (
             self.live_theme_combo,
+            self.scene_bg_color,
             self.live_height_scale,
             self.live_building_color,
             self.live_classification,
@@ -997,6 +1021,7 @@ class PluginDockWidget(QDockWidget):
             (self.greens_color, "greens"),
             (self.water_color, "water"),
             (self.trees_color, "trees"),
+            (self.scene_bg_color, "bg"),
         ):
             widget.blockSignals(True)
             widget.setColor(QColor(t_data[key]))
@@ -1015,6 +1040,19 @@ class PluginDockWidget(QDockWidget):
         self._apply_changes()
         self._apply_advanced_changes()
         self._apply_resolution()
+
+    def _apply_scene_background(self, color=None):
+        qcolor = color if color is not None else self.scene_bg_color.color()
+        try:
+            self.iface.mapCanvas().setCanvasColor(qcolor)
+        except Exception:
+            pass
+        native3d.set_3d_map_tile_resolution(
+            self.iface,
+            self.live_map_resolution.currentData() or self.map_resolution.currentData() or 1024,
+            qcolor.name(),
+        )
+        self._apply_changes()
 
     def _apply_changes(self):
         group_node = self.group_combo.currentData()
@@ -1148,6 +1186,10 @@ class PluginDockWidget(QDockWidget):
             QgsSettings().setValue(f"{_S}/map_resolution", res)
 
     def _current_bg_color(self):
+        try:
+            return self.scene_bg_color.color().name()
+        except Exception:
+            pass
         try:
             return self.iface.mapCanvas().canvasColor().name()
         except Exception:

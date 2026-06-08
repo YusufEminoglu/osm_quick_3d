@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.18.2] - 2026-06-08
+
+- Fix dock headings, checkbox visibility, contrast, and advanced style panel
+
 ## [0.18.1] - 2026-06-08
 
 - Fix dock scrolling and compact tab/category headings
