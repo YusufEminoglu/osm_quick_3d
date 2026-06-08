@@ -638,7 +638,43 @@ def _canvas_extent_and_crs(iface):
         return None, None
 
 
-def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, layers=None):
+def _truthy_layer_property(layer, key):
+    try:
+        value = layer.customProperty(key)
+    except Exception:
+        return False
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _apply_basemap_clip(settings, layers, clip_geometry=None):
+    try:
+        settings.setClippingRegions([])
+    except Exception:
+        pass
+    if clip_geometry is None or not layers:
+        return
+    basemaps = [
+        layer for layer in layers
+        if _truthy_layer_property(layer, "osm_quick_3d/basemap_underlay")
+    ]
+    if not basemaps:
+        return
+    try:
+        from qgis.core import QgsGeometry, QgsMapClippingRegion
+        geom = QgsGeometry(clip_geometry)
+        if geom.isEmpty():
+            return
+        region = QgsMapClippingRegion(geom)
+        region.setFeatureClip(QgsMapClippingRegion.FeatureClippingType.ClipPainterOnly)
+        region.setRestrictToLayers(True)
+        region.setRestrictedLayers(basemaps)
+        settings.setClippingRegions([region])
+    except Exception:
+        pass
+
+
+def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, layers=None,
+                            clip_geometry=None):
     """Apply layers, extent, terrain and camera framing to one QGIS 3D canvas."""
     if canvas is None:
         return False
@@ -652,6 +688,7 @@ def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, l
         layer_list = list(layers) if layers is not None else _project_3d_layers(iface)
         if layer_list and hasattr(settings, "setLayers"):
             settings.setLayers(layer_list)
+        _apply_basemap_clip(settings, layer_list, clip_geometry=clip_geometry)
 
         extent, crs = _canvas_extent_and_crs(iface)
         if crs is not None:
@@ -756,7 +793,8 @@ def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None):
 
 
 def create_embedded_3d_map_canvas(iface, resolution=1024, bg_color_hex=None,
-                                  name=EMBEDDED_3D_CANVAS_NAME, layers=None):
+                                  name=EMBEDDED_3D_CANVAS_NAME, layers=None,
+                                  clip_geometry=None):
     """Create or reuse the plugin-owned 3D canvas without triggering the menu action."""
     canvas = find_owned_3d_map_canvas(iface, name)
     if canvas is None:
@@ -775,7 +813,8 @@ def create_embedded_3d_map_canvas(iface, resolution=1024, bg_color_hex=None,
     if canvas is None:
         return None
     _mark_canvas_owned(canvas, name)
-    configure_3d_map_canvas(iface, canvas, resolution, bg_color_hex, layers=layers)
+    configure_3d_map_canvas(
+        iface, canvas, resolution, bg_color_hex, layers=layers, clip_geometry=clip_geometry)
     return canvas
 
 

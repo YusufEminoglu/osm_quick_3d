@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.18.7] - 2026-06-08
+
+- Stop premature 3D startup, make basemaps optional, clip underlays, and harden 3D dock fallback
+
 ## [0.18.6] - 2026-06-08
 
 - Fix QGIS 4 compatibility, basemap underlay movement, and 3D dock state sync

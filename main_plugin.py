@@ -100,11 +100,6 @@ class OsmQuick3DPlugin:
             self.iface.mainWindow().resizeDocks([self.dock], [430], horizontal)
         except Exception:
             pass
-        
-        from qgis.PyQt.QtCore import QTimer
-        for delay in (500, 1500, 3000):
-            QTimer.singleShot(delay, self.dock.embed_3d_view)
-
     def show_dialog(self):
         if self.dialog is None:
             from .dialog import PluginDialog
@@ -256,6 +251,10 @@ class OsmQuick3DPlugin:
                 return
             if node.parent() is group:
                 return
+            try:
+                basemap.setCustomProperty("osm_quick_3d/basemap_underlay", True)
+            except Exception:
+                pass
             clone = node.clone()
             parent = node.parent() or root
             parent.removeChildNode(node)
@@ -285,6 +284,7 @@ class OsmQuick3DPlugin:
         transparent = p.get("basemap") is not None
         try:
             base.setCustomProperty("osm_quick_3d/transparent", transparent)
+            base.setCustomProperty("osm_quick_3d/base_clip", True)
         except Exception:
             pass
         try:
@@ -502,6 +502,7 @@ class OsmQuick3DPlugin:
         if self.dock:
             try:
                 self.dock.sync_from_run_params(p)
+                self.dock.set_scene_clip_geometry(area_utm if p["basemap"] is not None else None)
             except Exception:
                 pass
         if p["open_3d"] and self.dock:

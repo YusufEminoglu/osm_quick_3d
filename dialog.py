@@ -328,8 +328,15 @@ class PluginDialog(QDialog):
         self.basemap = QgsMapLayerComboBox()
         self.basemap.setFilters(QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
         self.basemap.setAllowEmptyLayer(True)
-        self.basemap.setCurrentIndex(0)
-        form.addRow("Basemap underlay:", self.basemap)
+        try:
+            self.basemap.setCurrentLayer(None)
+        except Exception:
+            self.basemap.setCurrentIndex(-1)
+        self.basemap.setToolTip(
+            "Optional: choose a satellite/aerial or other external underlay. "
+            "The OSM vector layers are already styled without it."
+        )
+        form.addRow("Optional basemap:", self.basemap)
 
         self.cb_save_gpkg = QCheckBox("Save result to a GeoPackage (persistent layers)")
         self.cb_save_gpkg.setToolTip(

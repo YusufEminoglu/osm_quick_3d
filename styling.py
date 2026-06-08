@@ -544,8 +544,9 @@ def label_by_name(layer, size=8.0, color_hex="#3a4042", field="name"):
 def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_hex="#ffffff", theme="default"):
     """Subtle 2D ground fill, tinted to match the building colour ``mode``.
 
-    If ``transparent`` is True, we use QgsInvertedPolygonRenderer to mask out the
-    draped basemap outside the study area with the map canvas background color.
+    If ``transparent`` is True, the 2D footprint is only an outline. The actual
+    basemap crop for the 3D view is handled by QgsMapClippingRegion in native3d,
+    which avoids a white outside-ROI paint mask.
     """
     slab = base_color_hex(mode, theme=theme)
     outline = _scale_hex(slab, 1.25)
@@ -555,24 +556,13 @@ def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_
     except Exception:
         pass
     if transparent:
-        try:
-            from qgis.core import QgsInvertedPolygonRenderer
-            symbol = QgsFillSymbol.createSimple({
-                "color": bg_color_hex,
-                "outline_color": "0,0,0,0",
-                "outline_width": "0.0",
-                "style": "solid",
-            })
-            layer.setRenderer(QgsInvertedPolygonRenderer(QgsSingleSymbolRenderer(symbol)))
-        except Exception:
-            # Fallback if inverted renderer fails
-            symbol = QgsFillSymbol.createSimple({
-                "color": "0,0,0,0",
-                "outline_color": outline,
-                "outline_width": "0.2",
-                "style": "no",
-            })
-            layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+        symbol = QgsFillSymbol.createSimple({
+            "color": "0,0,0,0",
+            "outline_color": outline,
+            "outline_width": "0.2",
+            "style": "no",
+        })
+        layer.setRenderer(QgsSingleSymbolRenderer(symbol))
     else:
         fill = _scale_hex(slab, 1.6)        # light tint of the slab colour
         symbol = _fill(fill, outline=outline, outline_w=0.2)
