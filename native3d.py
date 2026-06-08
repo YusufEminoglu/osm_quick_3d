@@ -18,6 +18,7 @@ falls back to a "open a 3D Map View yourself" hint.
 from __future__ import annotations
 
 EXTRUSION_EXPRESSION = 'coalesce(to_real("height"), to_int("building_levels") * 3, 9)'
+EMBEDDED_3D_CANVAS_NAME = "OSM Quick 3D Embedded"
 
 
 def _extrusion_expression(height_scale=1.0):
@@ -109,6 +110,15 @@ def _refresh_3d_layer(layer):
             pass
 
 
+def _bind_renderer_to_layer(renderer, layer):
+    """QGIS LTR can leave Python-created 3D renderers detached unless forced."""
+    try:
+        renderer.setLayer(layer)
+    except Exception:
+        pass
+    return renderer
+
+
 def _apply_symbol_extrusion_properties(symbol, height_scale=1.0):
     try:
         symbol.setExtrusionHeight(9.0 * float(height_scale or 1.0))
@@ -162,7 +172,8 @@ def _apply_single_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.
             except Exception:
                 pass
     try:
-        layer.setRenderer3D(QgsVectorLayer3DRenderer(symbol))
+        renderer = _bind_renderer_to_layer(QgsVectorLayer3DRenderer(symbol), layer)
+        layer.setRenderer3D(renderer)
         _refresh_3d_layer(layer)
         return True
     except Exception:
@@ -350,6 +361,7 @@ def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color
     # 3. Set the rule-based 3D renderer on the layer
     try:
         renderer = QgsRuleBased3DRenderer(root_rule)
+        _bind_renderer_to_layer(renderer, layer)
         layer.setRenderer3D(renderer)
         _refresh_3d_layer(layer)
         return True
@@ -430,7 +442,9 @@ def apply_base_slab(layer, depth=5.0, top_z=-0.15, color_hex="#5e7274"):
                 continue
 
     try:
-        layer.setRenderer3D(QgsVectorLayer3DRenderer(symbol))
+        renderer = _bind_renderer_to_layer(QgsVectorLayer3DRenderer(symbol), layer)
+        layer.setRenderer3D(renderer)
+        _refresh_3d_layer(layer)
         return True
     except Exception:
         return False
@@ -487,7 +501,9 @@ def apply_tree_3d(layer, color_hex="#5f9e4c"):
         pass
 
     try:
-        layer.setRenderer3D(QgsVectorLayer3DRenderer(symbol))
+        renderer = _bind_renderer_to_layer(QgsVectorLayer3DRenderer(symbol), layer)
+        layer.setRenderer3D(renderer)
+        _refresh_3d_layer(layer)
         return True
     except Exception:
         return False
@@ -515,6 +531,21 @@ def _object_identity(obj):
     return class_name, object_name, window_title
 
 
+def _mark_canvas_owned(canvas, name=EMBEDDED_3D_CANVAS_NAME):
+    for setter, value in (("setObjectName", name), ("setTitle", name)):
+        try:
+            getattr(canvas, setter)(value)
+        except Exception:
+            pass
+
+
+def _canvas_matches_name(canvas, name=EMBEDDED_3D_CANVAS_NAME):
+    class_name, object_name, window_title = _object_identity(canvas)
+    target = (name or "").strip().lower()
+    haystack = " ".join((class_name, object_name, window_title)).lower()
+    return bool(target and target in haystack)
+
+
 def _is_3d_canvas_object(obj):
     try:
         from qgis._3d import Qgs3DMapCanvas
@@ -530,6 +561,10 @@ def _is_3d_canvas_object(obj):
 def find_3d_map_canvases(iface):
     """Return active Qgs3DMapCanvas objects from widgets and QWindow instances."""
     candidates = []
+    try:
+        candidates.extend(iface.mapCanvases3D())
+    except Exception:
+        pass
     try:
         from qgis.PyQt.QtWidgets import QWidget
         candidates.extend(iface.mainWindow().findChildren(QWidget))
@@ -556,6 +591,13 @@ def find_3d_map_canvases(iface):
     return canvases
 
 
+def find_owned_3d_map_canvas(iface, name=EMBEDDED_3D_CANVAS_NAME):
+    for canvas in find_3d_map_canvases(iface):
+        if _canvas_matches_name(canvas, name):
+            return canvas
+    return None
+
+
 def _project_3d_layers(iface):
     try:
         layers = list(iface.mapCanvas().layers())
@@ -570,75 +612,171 @@ def _project_3d_layers(iface):
         return []
 
 
-def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None):
-    """Find all active Qgs3DMapCanvas widgets in the project and set their resolution/background."""
+def _canvas_extent_and_crs(iface):
     try:
-        from qgis.PyQt.QtGui import QColor
-        canvases = find_3d_map_canvases(iface)
-
-        for c3d in canvases:
-            try:
-                settings = c3d.mapSettings()
-                try:
-                    layers = _project_3d_layers(iface)
-                    if layers and hasattr(settings, "setLayers"):
-                        settings.setLayers(layers)
-                except Exception:
-                    pass
-
-                # 1. Modern QGIS 3D API (terrainSettings)
-                applied = False
-                try:
-                    if hasattr(settings, "terrainSettings"):
-                        t_settings = settings.terrainSettings()
-                        if t_settings and hasattr(t_settings, "setMapTileResolution"):
-                            t_settings.setMapTileResolution(int(resolution))
-                            settings.setTerrainSettings(t_settings)
-                            applied = True
-                except Exception:
-                    pass
-
-                # 2. Legacy QGIS 3D API
-                if not applied:
-                    try:
-                        if hasattr(settings, "setMapTileResolution"):
-                            settings.setMapTileResolution(int(resolution))
-                    except Exception:
-                        pass
-
-                # Set background color and disable skybox
-                if bg_color_hex:
-                    try:
-                        settings.setBackgroundColor(QColor(bg_color_hex))
-                        settings.setIsSkyboxEnabled(False)
-                    except Exception:
-                        pass
-
-                # Apply changes to canvas
-                c3d.setMapSettings(settings)
-
-                # Force updates by toggling scene updates
-                try:
-                    scene = c3d.scene()
-                    if scene:
-                        scene.setSceneUpdatesEnabled(False)
-                        scene.setSceneUpdatesEnabled(True)
-                except Exception:
-                    pass
-
-                for method in ("update", "requestUpdate"):
-                    fn = getattr(c3d, method, None)
-                    if fn is None:
-                        continue
-                    try:
-                        fn()
-                        break
-                    except Exception:
-                        continue
-            except Exception:
-                pass
+        canvas = iface.mapCanvas()
+        return canvas.extent(), canvas.mapSettings().destinationCrs()
     except Exception:
         pass
+    try:
+        from qgis.core import QgsProject
+        extent = None
+        crs = None
+        for layer in QgsProject.instance().mapLayers().values():
+            try:
+                layer_extent = layer.extent()
+                if extent is None:
+                    extent = layer_extent
+                else:
+                    extent.combineExtentWith(layer_extent)
+                if crs is None:
+                    crs = layer.crs()
+            except Exception:
+                continue
+        return extent, crs
+    except Exception:
+        return None, None
+
+
+def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, layers=None):
+    """Apply layers, extent, terrain and camera framing to one QGIS 3D canvas."""
+    if canvas is None:
+        return False
+    try:
+        from qgis.core import QgsProject, QgsVector3D
+        from qgis.PyQt.QtGui import QColor
+        settings = canvas.mapSettings()
+        if settings is None:
+            return False
+
+        layer_list = list(layers) if layers is not None else _project_3d_layers(iface)
+        if layer_list and hasattr(settings, "setLayers"):
+            settings.setLayers(layer_list)
+
+        extent, crs = _canvas_extent_and_crs(iface)
+        if crs is not None:
+            try:
+                settings.setCrs(crs)
+            except Exception:
+                pass
+        if extent is not None and not extent.isEmpty():
+            try:
+                settings.setExtent(extent)
+            except Exception:
+                pass
+            try:
+                center = extent.center()
+                settings.setOrigin(QgsVector3D(center.x(), center.y(), 0.0))
+            except Exception:
+                pass
+
+        try:
+            project = QgsProject.instance()
+            settings.setTransformContext(project.transformContext())
+            settings.setPathResolver(project.pathResolver())
+            settings.resolveReferences(project)
+        except Exception:
+            pass
+
+        try:
+            if settings.terrainSettings() is None:
+                from qgis._3d import QgsFlatTerrainSettings
+                settings.setTerrainSettings(QgsFlatTerrainSettings())
+        except Exception:
+            pass
+
+        applied = False
+        try:
+            if hasattr(settings, "terrainSettings"):
+                t_settings = settings.terrainSettings()
+                if t_settings and hasattr(t_settings, "setMapTileResolution"):
+                    t_settings.setMapTileResolution(int(resolution))
+                    settings.setTerrainSettings(t_settings)
+                    applied = True
+        except Exception:
+            pass
+        if not applied:
+            try:
+                settings.setMapTileResolution(int(resolution))
+            except Exception:
+                pass
+
+        if bg_color_hex:
+            try:
+                settings.setBackgroundColor(QColor(bg_color_hex))
+            except Exception:
+                pass
+        try:
+            settings.setIsSkyboxEnabled(False)
+        except Exception:
+            pass
+        try:
+            settings.setTerrainRenderingEnabled(True)
+        except Exception:
+            pass
+
+        scene = None
+        try:
+            scene = canvas.scene()
+            if scene:
+                scene.setSceneUpdatesEnabled(False)
+                scene.setSceneUpdatesEnabled(True)
+                if extent is not None and not extent.isEmpty():
+                    scene.setViewFrom2DExtent(extent)
+                else:
+                    scene.viewZoomFull()
+        except Exception:
+            pass
+        try:
+            controller = canvas.cameraController()
+            if controller and extent is not None and not extent.isEmpty():
+                center = extent.center()
+                distance = max(extent.width(), extent.height(), 100.0) * 1.35
+                controller.setLookingAtMapPoint(QgsVector3D(center.x(), center.y(), 0.0), distance, 45.0, 0.0)
+        except Exception:
+            pass
+
+        for layer in layer_list:
+            _refresh_3d_layer(layer)
+        try:
+            canvas.requestUpdate()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None):
+    """Refresh all active QGIS 3D canvases; retained for existing UI hooks."""
+    ok = False
+    for canvas in find_3d_map_canvases(iface):
+        ok = configure_3d_map_canvas(iface, canvas, resolution, bg_color_hex) or ok
+    return ok
+
+
+def create_embedded_3d_map_canvas(iface, resolution=1024, bg_color_hex=None,
+                                  name=EMBEDDED_3D_CANVAS_NAME, layers=None):
+    """Create or reuse the plugin-owned 3D canvas without triggering the menu action."""
+    canvas = find_owned_3d_map_canvas(iface, name)
+    if canvas is None:
+        create_fn = getattr(iface, "createNewMapCanvas3D", None)
+        if create_fn is None:
+            return None
+        try:
+            canvas = create_fn(name)
+        except TypeError:
+            try:
+                canvas = create_fn(name, None)
+            except Exception:
+                canvas = None
+        except Exception:
+            canvas = None
+    if canvas is None:
+        return None
+    _mark_canvas_owned(canvas, name)
+    configure_3d_map_canvas(iface, canvas, resolution, bg_color_hex, layers=layers)
+    return canvas
 
 
 def open_3d_view(iface, resolution=1024, bg_color_hex=None):

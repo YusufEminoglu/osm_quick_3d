@@ -264,6 +264,7 @@ class PluginDockWidget(QDockWidget):
         self._embedded_original_parent = None
         self._embedded_original_layout = None
         self._embedded_original_dock = None
+        self._embedded_canvas_name = native3d.EMBEDDED_3D_CANVAS_NAME
 
         self._build_ui()
         self._restore()
@@ -271,7 +272,7 @@ class PluginDockWidget(QDockWidget):
 
         self._embed_timer = QTimer(self)
         self._embed_timer.setInterval(1500)
-        self._embed_timer.timeout.connect(lambda: self.embed_3d_view(auto=True))
+        self._embed_timer.timeout.connect(lambda: self._refresh_3d_view(auto=True))
         self._embed_timer.start()
 
     def _build_ui(self):
@@ -642,10 +643,10 @@ class PluginDockWidget(QDockWidget):
         controls.setContentsMargins(0, 0, 0, 0)
         controls.setSpacing(5)
         self.open_3d_btn = QPushButton("Open")
-        self.open_3d_btn.setToolTip("Open a QGIS 3D Map View and embed it here.")
+        self.open_3d_btn.setToolTip("Create the embedded QGIS 3D scene in this panel.")
         self.open_3d_btn.clicked.connect(self._on_open_3d_clicked)
-        self.restore_3d_btn = QPushButton("Restore")
-        self.restore_3d_btn.setToolTip("Return the embedded 3D view to its original QGIS dock.")
+        self.restore_3d_btn = QPushButton("Close")
+        self.restore_3d_btn.setToolTip("Close the embedded 3D scene.")
         self.restore_3d_btn.clicked.connect(self.cleanup_embedded_3d)
         controls.addWidget(self.open_3d_btn)
         controls.addWidget(self.restore_3d_btn)
@@ -660,7 +661,7 @@ class PluginDockWidget(QDockWidget):
         self.view_layout.setContentsMargins(0, 0, 0, 0)
         self.view_layout.setSpacing(0)
 
-        self.view_placeholder = QLabel("Open a 3D Map View to embed it here.")
+        self.view_placeholder = QLabel("Open the embedded 3D scene here.")
         try:
             self.view_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         except AttributeError:
@@ -1051,11 +1052,7 @@ class PluginDockWidget(QDockWidget):
             self.iface.mapCanvas().setCanvasColor(qcolor)
         except Exception:
             pass
-        native3d.set_3d_map_tile_resolution(
-            self.iface,
-            self.live_map_resolution.currentData() or self.map_resolution.currentData() or 1024,
-            qcolor.name(),
-        )
+        self._refresh_3d_view(auto=True)
         self._apply_changes()
 
     def _apply_changes(self):
@@ -1135,6 +1132,7 @@ class PluginDockWidget(QDockWidget):
         finally:
             canvas.freeze(False)
             canvas.refresh()
+        self._refresh_3d_view(auto=True)
 
     def _apply_advanced_changes(self):
         group_node = self.group_combo.currentData()
@@ -1182,11 +1180,12 @@ class PluginDockWidget(QDockWidget):
         finally:
             canvas.freeze(False)
             canvas.refresh()
+        self._refresh_3d_view(auto=True)
 
     def _apply_resolution(self):
         res = self.live_map_resolution.currentData()
         if res:
-            native3d.set_3d_map_tile_resolution(self.iface, res, self._current_bg_color())
+            self._refresh_3d_view(auto=True)
             QgsSettings().setValue(f"{_S}/map_resolution", res)
 
     def _current_bg_color(self):
@@ -1201,17 +1200,10 @@ class PluginDockWidget(QDockWidget):
             return styling.THEMES.get(theme_key, styling.THEMES["default"])["bg"]
 
     def _on_open_3d_clicked(self):
-        opened = native3d.open_3d_view(
-            self.iface,
-            resolution=self.live_map_resolution.currentData() or self.map_resolution.currentData() or 1024,
-            bg_color_hex=self._current_bg_color(),
-        )
-        if opened:
-            self.set_status("Opening 3D view...")
-            for delay in (800, 1800, 3200):
-                QTimer.singleShot(delay, self.embed_3d_view)
+        if self.embed_3d_view(auto=False):
+            self.set_status("Embedded 3D scene ready.")
         else:
-            self.set_status("Could not open a 3D Map View automatically.", error=True)
+            self.set_status("Could not create the embedded 3D scene.", error=True)
 
     def _dock_for_widget(self, widget):
         current = widget
@@ -1227,36 +1219,77 @@ class PluginDockWidget(QDockWidget):
                 if dock is self:
                     continue
                 text = f"{dock.windowTitle() or ''} {dock.objectName() or ''}".lower()
-                if "3d" in text and ("map" in text or "harita" in text):
+                target = self._embedded_canvas_name.lower()
+                if target in text or ("3d" in text and ("map" in text or "harita" in text)):
                     return dock
         except Exception:
             pass
         return None
 
+    def _current_3d_layers(self):
+        group_node = self.group_combo.currentData() if hasattr(self, "group_combo") else None
+        if group_node:
+            layers = []
+            for child in group_node.children():
+                if isinstance(child, QgsLayerTreeLayer):
+                    layer = child.layer()
+                    if layer:
+                        layers.append(layer)
+            if layers:
+                return layers
+        try:
+            layers = list(self.iface.mapCanvas().layers())
+            if layers:
+                return layers
+        except Exception:
+            pass
+        try:
+            return list(QgsProject.instance().mapLayers().values())
+        except Exception:
+            return []
+
+    def _refresh_3d_view(self, auto=False):
+        canvas = self._embedded_canvas or native3d.find_owned_3d_map_canvas(
+            self.iface, self._embedded_canvas_name
+        )
+        if canvas is None:
+            return False
+        return native3d.configure_3d_map_canvas(
+            self.iface,
+            canvas,
+            self.live_map_resolution.currentData() or self.map_resolution.currentData() or 1024,
+            self._current_bg_color(),
+            layers=self._current_3d_layers(),
+        )
+
     def _find_3d_canvas(self):
         if self._embedded_canvas is not None:
             return self._embedded_canvas
-        for widget in native3d.find_3d_map_canvases(self.iface):
-            parent = widget.parent()
-            while parent is not None:
-                if parent is self.view_host or parent is self._embedded_container:
-                    return widget
-                parent = parent.parent()
-            return widget
-        return None
+        return native3d.find_owned_3d_map_canvas(self.iface, self._embedded_canvas_name)
 
     def embed_3d_view(self, auto=False):
         if not self.isVisible() and auto:
             return False
-        if self._embedded_canvas is not None:
+        if self._embedded_canvas is not None and self._embedded_container is not None:
+            self._refresh_3d_view(auto=auto)
+            self.tab_widget.setCurrentWidget(self.view_tab)
             return True
 
         canvas = self._find_3d_canvas()
+        if canvas is None and not auto:
+            canvas = native3d.create_embedded_3d_map_canvas(
+                self.iface,
+                resolution=self.live_map_resolution.currentData() or self.map_resolution.currentData() or 1024,
+                bg_color_hex=self._current_bg_color(),
+                name=self._embedded_canvas_name,
+                layers=self._current_3d_layers(),
+            )
         if canvas is None:
             if not auto:
-                self.set_status("No active 3D Map View found.", error=True)
+                self.set_status("No embedded 3D scene could be created.", error=True)
             return False
 
+        native3d._mark_canvas_owned(canvas, self._embedded_canvas_name)
         self._embedded_canvas = canvas
         self._embedded_original_parent = canvas.parent()
         self._embedded_original_layout = (
@@ -1316,13 +1349,15 @@ class PluginDockWidget(QDockWidget):
                 pass
 
         self.tab_widget.setCurrentWidget(self.view_tab)
-        native3d.set_3d_map_tile_resolution(
+        native3d.configure_3d_map_canvas(
             self.iface,
+            canvas,
             self.live_map_resolution.currentData() or self.map_resolution.currentData() or 1024,
             self._current_bg_color(),
+            layers=self._current_3d_layers(),
         )
         if not auto:
-            self.set_status("3D view embedded.")
+            self.set_status("Embedded 3D scene ready.")
         return True
 
     def cleanup_embedded_3d(self):
@@ -1342,30 +1377,14 @@ class PluginDockWidget(QDockWidget):
                 self.view_layout.removeWidget(canvas)
             except Exception:
                 pass
-        restored = False
+
         try:
-            if isinstance(canvas, QWidget) and self._embedded_original_parent is not None:
-                canvas.setParent(self._embedded_original_parent)
-                if self._embedded_original_layout is not None and self._embedded_original_layout.indexOf(canvas) < 0:
-                    self._embedded_original_layout.addWidget(canvas)
-                canvas.show()
-                restored = True
-            elif self._embedded_original_parent is not None:
-                canvas.setParent(self._embedded_original_parent)
-                canvas.show()
-                restored = True
+            self.iface.closeMapCanvas(self._embedded_canvas_name)
         except Exception:
-            restored = False
-        if not restored:
             try:
                 canvas.setParent(None)
-                canvas.show()
-            except Exception:
-                pass
-        if self._embedded_original_dock is not None and self._embedded_original_dock is not self:
-            try:
-                self._embedded_original_dock.show()
-                self._embedded_original_dock.raise_()
+                canvas.close()
+                canvas.deleteLater()
             except Exception:
                 pass
 

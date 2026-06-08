@@ -477,12 +477,7 @@ class OsmQuick3DPlugin:
             canvas.freeze(False)
             canvas.refresh()
 
-        opened_3d = native3d.open_3d_view(self.iface, resolution=p.get("map_resolution", 1024), bg_color_hex=canvas.canvasColor().name()) if p["open_3d"] else False
-        
-        if p["open_3d"] and self.dock:
-            from qgis.PyQt.QtCore import QTimer
-            for delay in (1000, 2500, 4500):
-                QTimer.singleShot(delay, self.dock.embed_3d_view)
+        opened_3d = False
 
         summary = f"{total} features added: " + ", ".join(added) + f" (EPSG:{epsg})."
         totals = self._building_totals(buildings_layer)
@@ -497,6 +492,11 @@ class OsmQuick3DPlugin:
         self.iface.messageBar().pushSuccess("OSM Quick 3D", summary)
         self._set_status(summary)
         self.show_dock()
+        if p["open_3d"] and self.dock:
+            opened_3d = self.dock.embed_3d_view(auto=False)
+            from qgis.PyQt.QtCore import QTimer
+            for delay in (600, 1500, 3000):
+                QTimer.singleShot(delay, lambda: self.dock and self.dock._refresh_3d_view(auto=True))
         if gpkg_path is not None and gpkg_failed:
             self.iface.messageBar().pushWarning(
                 "OSM Quick 3D",
@@ -511,8 +511,8 @@ class OsmQuick3DPlugin:
         if p["open_3d"] and not opened_3d:
             self.iface.messageBar().pushInfo(
                 "OSM Quick 3D",
-                "Could not open a 3D view automatically — open View ▸ New 3D Map View "
-                "(the buildings are already extruded).",
+                "Could not create the embedded 3D scene in this QGIS build "
+                "(the building layers are still configured with 3D renderers).",
             )
 
     def _error(self, title, text):

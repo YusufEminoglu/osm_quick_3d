@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.18.4] - 2026-06-08
+
+- Fix embedded-only 3D dock scene and bind extrusion renderers to layers
+
 ## [0.18.3] - 2026-06-08
 
 - Fix embedded QGIS 3D canvas, extrusion refresh, and compact dock spacing
