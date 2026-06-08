@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.18.8] - 2026-06-08
+
+- Remove unsafe 3D dock embedding and ship a managed native 3D scene controller
+
 ## [0.18.7] - 2026-06-08
 
 - Stop premature 3D startup, make basemaps optional, clip underlays, and harden 3D dock fallback

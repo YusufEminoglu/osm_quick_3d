@@ -1,6 +1,6 @@
 # OSM Quick 3D
 
-One-click OpenStreetMap into **native QGIS**: function-styled 2D layers, a flat-roof **3D building massing** model, and a basemap underlay. No browser, no web server — built for **larger areas** than a web 3D scene.
+One-click OpenStreetMap into **native QGIS**: function-styled 2D layers, a flat-roof **3D building massing** model, and an optional basemap underlay. No browser, no web server — built for **larger areas** than a web 3D scene.
 
 OSM Quick 3D is the native sibling of [`osm_3d_model`](https://github.com/YusufEminoglu/osm_3d_model) (the browser / Three.js viewer). Same OpenStreetMap logic, but the data lands directly in QGIS as plain layers you can analyse, edit and view in QGIS's own 3D Map View.
 

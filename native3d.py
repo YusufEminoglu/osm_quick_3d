@@ -18,7 +18,7 @@ falls back to a "open a 3D Map View yourself" hint.
 from __future__ import annotations
 
 EXTRUSION_EXPRESSION = 'coalesce(to_real("height"), to_int("building_levels") * 3, 9)'
-EMBEDDED_3D_CANVAS_NAME = "OSM Quick 3D Embedded"
+MANAGED_3D_CANVAS_NAME = "OSM Quick 3D Scene"
 
 
 def _extrusion_expression(height_scale=1.0):
@@ -531,7 +531,7 @@ def _object_identity(obj):
     return class_name, object_name, window_title
 
 
-def _mark_canvas_owned(canvas, name=EMBEDDED_3D_CANVAS_NAME):
+def _mark_canvas_owned(canvas, name=MANAGED_3D_CANVAS_NAME):
     for setter, value in (("setObjectName", name), ("setTitle", name)):
         try:
             getattr(canvas, setter)(value)
@@ -539,7 +539,7 @@ def _mark_canvas_owned(canvas, name=EMBEDDED_3D_CANVAS_NAME):
             pass
 
 
-def _canvas_matches_name(canvas, name=EMBEDDED_3D_CANVAS_NAME):
+def _canvas_matches_name(canvas, name=MANAGED_3D_CANVAS_NAME):
     class_name, object_name, window_title = _object_identity(canvas)
     target = (name or "").strip().lower()
     haystack = " ".join((class_name, object_name, window_title)).lower()
@@ -591,7 +591,7 @@ def find_3d_map_canvases(iface):
     return canvases
 
 
-def find_owned_3d_map_canvas(iface, name=EMBEDDED_3D_CANVAS_NAME):
+def find_owned_3d_map_canvas(iface, name=MANAGED_3D_CANVAS_NAME):
     for canvas in find_3d_map_canvases(iface):
         if _canvas_matches_name(canvas, name):
             return canvas
@@ -792,10 +792,15 @@ def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None):
     return ok
 
 
-def create_embedded_3d_map_canvas(iface, resolution=1024, bg_color_hex=None,
-                                  name=EMBEDDED_3D_CANVAS_NAME, layers=None,
-                                  clip_geometry=None):
-    """Create or reuse the plugin-owned 3D canvas without triggering the menu action."""
+def create_managed_3d_map_canvas(iface, resolution=1024, bg_color_hex=None,
+                                 name=MANAGED_3D_CANVAS_NAME, layers=None,
+                                 clip_geometry=None):
+    """Create or reuse the plugin-owned native 3D canvas.
+
+    The canvas stays owned by QGIS as a normal 3D Map View. The plugin controls
+    its settings, layers, styling and camera, but never reparents the QWindow
+    into the dock because that is unstable on Windows/Qt.
+    """
     canvas = find_owned_3d_map_canvas(iface, name)
     if canvas is None:
         create_fn = getattr(iface, "createNewMapCanvas3D", None)

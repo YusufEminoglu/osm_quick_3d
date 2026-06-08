@@ -64,7 +64,7 @@ def _size_policy(name):
 
 
 class PluginDockWidget(QDockWidget):
-    """Docked plugin surface with build, live styling, and embedded 3D view tabs."""
+    """Docked plugin surface with build, live styling, and native 3D scene control."""
 
     runRequested = pyqtSignal(dict)
 
@@ -259,12 +259,8 @@ class PluginDockWidget(QDockWidget):
         self.setMinimumWidth(300)
         self.resize(430, 720)
 
-        self._embedded_canvas = None
-        self._embedded_container = None
-        self._embedded_original_parent = None
-        self._embedded_original_layout = None
-        self._embedded_original_dock = None
-        self._embedded_canvas_name = native3d.EMBEDDED_3D_CANVAS_NAME
+        self._managed_canvas = None
+        self._managed_canvas_name = native3d.MANAGED_3D_CANVAS_NAME
         self._scene_clip_geometry = None
 
         self._build_ui()
@@ -297,7 +293,7 @@ class PluginDockWidget(QDockWidget):
         self.tab_widget.addTab(self.view_tab, "3D")
         self.tab_widget.setTabToolTip(0, "Download & Build")
         self.tab_widget.setTabToolTip(1, "Live Styling")
-        self.tab_widget.setTabToolTip(2, "Embedded 3D Map View")
+        self.tab_widget.setTabToolTip(2, "Managed native QGIS 3D scene")
         root.addWidget(self.tab_widget, 1)
 
         self.setWidget(root_widget)
@@ -467,7 +463,7 @@ class PluginDockWidget(QDockWidget):
         self.cb_base = QCheckBox("Add recessed ground base")
         form.addRow("", self.cb_base)
 
-        self.cb_open3d = QCheckBox("Open and embed 3D Map View")
+        self.cb_open3d = QCheckBox("Open managed 3D Map View")
         form.addRow("", self.cb_open3d)
 
         self.map_resolution = QComboBox()
@@ -643,18 +639,53 @@ class PluginDockWidget(QDockWidget):
         controls.setContentsMargins(0, 0, 0, 0)
         controls.setSpacing(5)
         self.open_3d_btn = QPushButton("Open")
-        self.open_3d_btn.setToolTip("Create the embedded QGIS 3D scene in this panel.")
+        self.open_3d_btn.setToolTip("Open or refresh the managed native QGIS 3D scene.")
         self.open_3d_btn.clicked.connect(self._on_open_3d_clicked)
+        self.refresh_scene_btn = QPushButton("Refresh")
+        self.refresh_scene_btn.setToolTip("Reapply layers, clipping, resolution and camera framing to the managed 3D scene.")
+        self.refresh_scene_btn.clicked.connect(self._on_refresh_3d_clicked)
         self.focus_3d_btn = QPushButton("Focus")
         self.focus_3d_btn.setToolTip("Bring the managed 3D scene to the front when QGIS keeps it as a separate window.")
         self.focus_3d_btn.clicked.connect(self._raise_3d_view)
         self.restore_3d_btn = QPushButton("Close")
-        self.restore_3d_btn.setToolTip("Close the embedded 3D scene.")
-        self.restore_3d_btn.clicked.connect(self.cleanup_embedded_3d)
+        self.restore_3d_btn.setToolTip("Close the managed 3D scene.")
+        self.restore_3d_btn.clicked.connect(self.cleanup_managed_3d)
         controls.addWidget(self.open_3d_btn)
+        controls.addWidget(self.refresh_scene_btn)
         controls.addWidget(self.focus_3d_btn)
         controls.addWidget(self.restore_3d_btn)
         layout.addLayout(controls)
+
+        scene_box = QGroupBox("Managed Scene")
+        scene_grid = QGridLayout(scene_box)
+        scene_grid.setContentsMargins(8, 8, 8, 8)
+        scene_grid.setHorizontalSpacing(8)
+        scene_grid.setVerticalSpacing(4)
+        self.scene_state_value = QLabel("Closed")
+        self.scene_group_value = QLabel("No OSM group")
+        self.scene_layers_value = QLabel("0")
+        self.scene_clip_value = QLabel("None")
+        self.scene_resolution_value = QLabel("1024 px")
+        for value in (
+            self.scene_state_value,
+            self.scene_group_value,
+            self.scene_layers_value,
+            self.scene_clip_value,
+            self.scene_resolution_value,
+        ):
+            value.setTextInteractionFlags(_qt_value(Qt, "TextInteractionFlag", "TextSelectableByMouse"))
+            value.setStyleSheet("font-weight:600;color:#1b3c40;")
+        scene_grid.addWidget(QLabel("State:"), 0, 0)
+        scene_grid.addWidget(self.scene_state_value, 0, 1)
+        scene_grid.addWidget(QLabel("Group:"), 1, 0)
+        scene_grid.addWidget(self.scene_group_value, 1, 1)
+        scene_grid.addWidget(QLabel("Layers:"), 2, 0)
+        scene_grid.addWidget(self.scene_layers_value, 2, 1)
+        scene_grid.addWidget(QLabel("Basemap clip:"), 3, 0)
+        scene_grid.addWidget(self.scene_clip_value, 3, 1)
+        scene_grid.addWidget(QLabel("Resolution:"), 4, 0)
+        scene_grid.addWidget(self.scene_resolution_value, 4, 1)
+        layout.addWidget(scene_box)
 
         self.view_host = QFrame()
         self.view_host.setFrameShape(QFrame.Shape.StyledPanel)
@@ -666,7 +697,7 @@ class PluginDockWidget(QDockWidget):
         self.view_layout.setSpacing(0)
 
         self.view_placeholder = QLabel(
-            "Download OSM data first, then open the native QGIS 3D scene. If QGIS keeps the 3D canvas in a separate window, this dock still controls its layers, style, labels, base and scene settings."
+            "Download OSM data first, then open the managed QGIS 3D scene. The 3D view opens as a native QGIS window for stability; this dock controls layers, styling, labels, base, clipping, resolution and scene refresh."
         )
         try:
             self.view_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -676,6 +707,7 @@ class PluginDockWidget(QDockWidget):
         self.view_placeholder.setStyleSheet("color:#b7c7c5;font-size:12px;padding:16px;")
         self.view_layout.addWidget(self.view_placeholder)
         layout.addWidget(self.view_host, 1)
+        self._update_scene_panel()
         return tab
 
     def _on_clear_cache(self):
@@ -838,11 +870,37 @@ class PluginDockWidget(QDockWidget):
     def set_scene_clip_geometry(self, geometry):
         if geometry is None:
             self._scene_clip_geometry = None
+            self._update_scene_panel()
             return
         try:
             self._scene_clip_geometry = QgsGeometry(geometry)
         except Exception:
             self._scene_clip_geometry = None
+        self._update_scene_panel()
+
+    def _update_scene_panel(self):
+        if not hasattr(self, "scene_state_value") or not hasattr(self, "open_3d_btn"):
+            return
+        group_node = self.group_combo.currentData() if hasattr(self, "group_combo") else None
+        layers = self._current_3d_layers() if group_node else []
+        canvas = self._managed_canvas or native3d.find_owned_3d_map_canvas(
+            self.iface, self._managed_canvas_name
+        )
+        state = "Open" if canvas is not None else "Closed"
+        group_text = self.group_combo.currentText() if group_node else "No OSM group"
+        clip_text = "ROI" if self._scene_clip_geometry is not None else "None"
+        resolution = self.live_map_resolution.currentData() if hasattr(self, "live_map_resolution") else None
+        resolution = resolution or (self.map_resolution.currentData() if hasattr(self, "map_resolution") else 1024)
+        self.scene_state_value.setText(state)
+        self.scene_group_value.setText(group_text or "No OSM group")
+        self.scene_layers_value.setText(str(len(layers)))
+        self.scene_clip_value.setText(clip_text)
+        self.scene_resolution_value.setText(f"{int(resolution)} px")
+        has_layers = bool(layers)
+        self.open_3d_btn.setEnabled(has_layers)
+        self.refresh_scene_btn.setEnabled(has_layers)
+        self.focus_3d_btn.setEnabled(canvas is not None)
+        self.restore_3d_btn.setEnabled(canvas is not None)
 
     def set_status(self, text, *, error=False):
         color = "#a32525" if error else "#245d39"
@@ -867,6 +925,7 @@ class PluginDockWidget(QDockWidget):
         self.group_combo.setCurrentIndex(idx if idx >= 0 else 0)
         self.group_combo.blockSignals(False)
         self._on_group_selected()
+        self._update_scene_panel()
 
     def _set_live_controls_enabled(self, enabled):
         controls = (
@@ -893,6 +952,7 @@ class PluginDockWidget(QDockWidget):
         group_node = self.group_combo.currentData()
         if not group_node:
             self._set_live_controls_enabled(False)
+            self._update_scene_panel()
             return
 
         self._set_live_controls_enabled(True)
@@ -1007,6 +1067,7 @@ class PluginDockWidget(QDockWidget):
 
         self._update_live_classification_enabled()
         self._update_live_color_preview()
+        self._update_scene_panel()
 
     def _get_layers(self, group_node) -> dict:
         layers = {}
@@ -1239,6 +1300,7 @@ class PluginDockWidget(QDockWidget):
         if res:
             self._refresh_3d_view(auto=True)
             QgsSettings().setValue(f"{_S}/map_resolution", res)
+        self._update_scene_panel()
 
     def _current_bg_color(self):
         try:
@@ -1251,26 +1313,22 @@ class PluginDockWidget(QDockWidget):
             theme_key = self.live_theme_combo.currentData() or self.theme_combo.currentData() or "default"
             return styling.THEMES.get(theme_key, styling.THEMES["default"])["bg"]
 
-    def _can_embed_qwindow(self):
-        try:
-            from qgis.PyQt.QtCore import QT_VERSION_STR
-            return int(str(QT_VERSION_STR).split(".", 1)[0]) < 6
-        except Exception:
-            return False
-
     def _on_open_3d_clicked(self):
-        if self.embed_3d_view(auto=False):
-            self.set_status("Native 3D scene ready.")
+        if self.open_managed_3d_view(auto=False):
+            self.set_status("Managed QGIS 3D scene ready.")
         else:
-            self.set_status("Could not create the embedded 3D scene.", error=True)
+            self.set_status("Could not create the managed 3D scene.", error=True)
+        self._update_scene_panel()
 
-    def _dock_for_widget(self, widget):
-        current = widget
-        while current is not None:
-            if isinstance(current, QDockWidget):
-                return current
-            current = current.parent()
-        return None
+    def _on_refresh_3d_clicked(self):
+        ok = self._refresh_3d_view(auto=False)
+        if not ok:
+            ok = self.open_managed_3d_view(auto=False)
+        if ok:
+            self.set_status("Managed 3D scene refreshed.")
+        else:
+            self.set_status("No managed 3D scene to refresh yet.", error=True)
+        self._update_scene_panel()
 
     def _find_external_3d_dock(self):
         try:
@@ -1278,7 +1336,7 @@ class PluginDockWidget(QDockWidget):
                 if dock is self:
                     continue
                 text = f"{dock.windowTitle() or ''} {dock.objectName() or ''}".lower()
-                target = self._embedded_canvas_name.lower()
+                target = self._managed_canvas_name.lower()
                 if target in text or ("3d" in text and ("map" in text or "harita" in text)):
                     return dock
         except Exception:
@@ -1299,12 +1357,13 @@ class PluginDockWidget(QDockWidget):
         return []
 
     def _refresh_3d_view(self, auto=False):
-        canvas = self._embedded_canvas or native3d.find_owned_3d_map_canvas(
-            self.iface, self._embedded_canvas_name
+        canvas = self._managed_canvas or native3d.find_owned_3d_map_canvas(
+            self.iface, self._managed_canvas_name
         )
         if canvas is None:
+            self._update_scene_panel()
             return False
-        return native3d.configure_3d_map_canvas(
+        ok = native3d.configure_3d_map_canvas(
             self.iface,
             canvas,
             self.live_map_resolution.currentData() or self.map_resolution.currentData() or 1024,
@@ -1312,13 +1371,15 @@ class PluginDockWidget(QDockWidget):
             layers=self._current_3d_layers(),
             clip_geometry=self._scene_clip_geometry,
         )
+        self._update_scene_panel()
+        return ok
 
     def _find_3d_canvas(self):
-        if self._embedded_canvas is not None:
-            return self._embedded_canvas
-        return native3d.find_owned_3d_map_canvas(self.iface, self._embedded_canvas_name)
+        if self._managed_canvas is not None:
+            return self._managed_canvas
+        return native3d.find_owned_3d_map_canvas(self.iface, self._managed_canvas_name)
 
-    def embed_3d_view(self, auto=False):
+    def open_managed_3d_view(self, auto=False):
         if not self.isVisible() and auto:
             return False
         layers = self._current_3d_layers()
@@ -1326,81 +1387,33 @@ class PluginDockWidget(QDockWidget):
             if not auto:
                 self.set_status("Download OSM data first; the 3D scene is created after a result group exists.", error=True)
             return False
-        if self._embedded_canvas is not None:
+        if self._managed_canvas is not None:
             self._refresh_3d_view(auto=auto)
             self.tab_widget.setCurrentWidget(self.view_tab)
+            self._show_external_3d_guide()
+            if not auto:
+                self._raise_3d_view()
+            self._update_scene_panel()
             return True
 
         canvas = self._find_3d_canvas()
         if canvas is None and not auto:
-            canvas = native3d.create_embedded_3d_map_canvas(
+            canvas = native3d.create_managed_3d_map_canvas(
                 self.iface,
                 resolution=self.live_map_resolution.currentData() or self.map_resolution.currentData() or 1024,
                 bg_color_hex=self._current_bg_color(),
-                name=self._embedded_canvas_name,
+                name=self._managed_canvas_name,
                 layers=layers,
                 clip_geometry=self._scene_clip_geometry,
             )
         if canvas is None:
             if not auto:
-                self.set_status("No embedded 3D scene could be created.", error=True)
+                self.set_status("No managed 3D scene could be created.", error=True)
+            self._update_scene_panel()
             return False
 
-        native3d._mark_canvas_owned(canvas, self._embedded_canvas_name)
-        self._embedded_canvas = canvas
-        self._embedded_original_parent = canvas.parent()
-        self._embedded_original_layout = (
-            self._embedded_original_parent.layout()
-            if self._embedded_original_parent is not None and hasattr(self._embedded_original_parent, "layout")
-            else None
-        )
-        self._embedded_original_dock = (
-            self._dock_for_widget(canvas) if isinstance(canvas, QWidget) else self._find_external_3d_dock()
-        )
-
-        try:
-            if self.view_layout.indexOf(self.view_placeholder) >= 0:
-                self.view_layout.removeWidget(self.view_placeholder)
-                self.view_placeholder.hide()
-            if self._embedded_original_layout is not None:
-                self._embedded_original_layout.removeWidget(canvas)
-            if isinstance(canvas, QWidget):
-                canvas.setParent(self.view_host)
-                canvas.setSizePolicy(_size_policy("Expanding"), _size_policy("Expanding"))
-                canvas.setMinimumSize(220, 180)
-                self.view_layout.addWidget(canvas, 1)
-                canvas.show()
-                canvas.update()
-            else:
-                if not self._can_embed_qwindow():
-                    raise RuntimeError("QWindow embedding is disabled for this Qt runtime.")
-                self._embedded_container = QWidget.createWindowContainer(canvas, self.view_host)
-                self._embedded_container.setSizePolicy(_size_policy("Expanding"), _size_policy("Expanding"))
-                self._embedded_container.setMinimumSize(220, 180)
-                self.view_layout.addWidget(self._embedded_container, 1)
-                self._embedded_container.show()
-        except Exception:
-            self._embedded_container = None
-            self._show_external_3d_guide()
-            native3d.configure_3d_map_canvas(
-                self.iface,
-                canvas,
-                self.live_map_resolution.currentData() or self.map_resolution.currentData() or 1024,
-                self._current_bg_color(),
-                layers=layers,
-                clip_geometry=self._scene_clip_geometry,
-            )
-            if not auto:
-                self.set_status("QGIS kept the 3D scene in a separate window; this dock still controls it.")
-            return True
-
-        if self._embedded_original_dock is not None and self._embedded_original_dock is not self:
-            try:
-                self._embedded_original_dock.hide()
-            except Exception:
-                pass
-
-        self.tab_widget.setCurrentWidget(self.view_tab)
+        native3d._mark_canvas_owned(canvas, self._managed_canvas_name)
+        self._managed_canvas = canvas
         native3d.configure_3d_map_canvas(
             self.iface,
             canvas,
@@ -1409,15 +1422,11 @@ class PluginDockWidget(QDockWidget):
             layers=layers,
             clip_geometry=self._scene_clip_geometry,
         )
-        try:
-            self.view_placeholder.setText(
-                "Native QGIS 3D scene is active. Use the controls here; QGIS owns the 3D viewport safely."
-            )
-            self.view_placeholder.show()
-        except Exception:
-            pass
+        self._show_external_3d_guide()
         if not auto:
-            self.set_status("Native 3D scene ready.")
+            self._raise_3d_view()
+            self.set_status("Managed QGIS 3D scene ready; use this dock to control it.")
+        self._update_scene_panel()
         return True
 
     def _show_external_3d_guide(self):
@@ -1425,7 +1434,7 @@ class PluginDockWidget(QDockWidget):
             if self.view_layout.indexOf(self.view_placeholder) < 0:
                 self.view_layout.addWidget(self.view_placeholder, 1)
             self.view_placeholder.setText(
-                "QGIS did not expose this 3D canvas as an embeddable widget on this runtime. Keep the 3D window open and use the Style tab here for group selection, layer colors, height exaggeration, labels, base extrusion, trees and scene background."
+                "The native QGIS 3D scene is managed from this dock. Keep the 3D Map View open and use the Style tab here for group selection, layer colors, height exaggeration, labels, base extrusion, trees, basemap clipping, scene background and resolution."
             )
             self.view_placeholder.show()
             self.tab_widget.setCurrentWidget(self.view_tab)
@@ -1433,17 +1442,19 @@ class PluginDockWidget(QDockWidget):
             pass
 
     def _raise_3d_view(self):
-        dock = self._embedded_original_dock or self._find_external_3d_dock()
+        dock = self._find_external_3d_dock()
         if dock is not None:
             try:
                 dock.show()
-                dock.raise_()
                 dock.activateWindow()
+                handle = dock.windowHandle()
+                if handle is not None:
+                    handle.requestActivate()
                 return True
             except Exception:
                 pass
-        canvas = self._embedded_canvas or self._find_3d_canvas()
-        for method in ("show", "raise_", "requestActivate"):
+        canvas = self._managed_canvas or self._find_3d_canvas()
+        for method in ("show", "activateWindow", "requestActivate"):
             fn = getattr(canvas, method, None) if canvas is not None else None
             if fn is None:
                 continue
@@ -1451,59 +1462,47 @@ class PluginDockWidget(QDockWidget):
                 fn()
             except Exception:
                 pass
+        try:
+            handle = canvas.windowHandle()
+            if handle is not None:
+                handle.requestActivate()
+        except Exception:
+            pass
         return canvas is not None
 
-    def cleanup_embedded_3d(self):
-        canvas = self._embedded_canvas
+    def cleanup_managed_3d(self):
+        canvas = self._managed_canvas
         if canvas is None:
             return
-
-        if self._embedded_container is not None:
-            try:
-                self.view_layout.removeWidget(self._embedded_container)
-                self._embedded_container.setParent(None)
-                self._embedded_container.deleteLater()
-            except Exception:
-                pass
-        elif isinstance(canvas, QWidget):
-            try:
-                self.view_layout.removeWidget(canvas)
-            except Exception:
-                pass
 
         try:
             close_3d = getattr(self.iface, "closeMapCanvas3D", None)
             if close_3d is not None:
-                close_3d(self._embedded_canvas_name)
+                close_3d(self._managed_canvas_name)
             else:
-                self.iface.closeMapCanvas(self._embedded_canvas_name)
+                self.iface.closeMapCanvas(self._managed_canvas_name)
         except Exception:
             try:
-                canvas.setParent(None)
                 canvas.close()
-                canvas.deleteLater()
             except Exception:
                 pass
 
-        self._embedded_canvas = None
-        self._embedded_container = None
-        self._embedded_original_parent = None
-        self._embedded_original_layout = None
-        self._embedded_original_dock = None
+        self._managed_canvas = None
 
         try:
             if self.view_layout.indexOf(self.view_placeholder) < 0:
                 self.view_layout.addWidget(self.view_placeholder, 1)
             self.view_placeholder.setText(
-                "Download OSM data first, then open the native QGIS 3D scene. If QGIS keeps the 3D canvas in a separate window, this dock still controls its layers, style, labels, base and scene settings."
+                "Download OSM data first, then open the managed QGIS 3D scene. The 3D view opens as a native QGIS window for stability; this dock controls layers, styling, labels, base, clipping, resolution and scene refresh."
             )
             self.view_placeholder.show()
         except Exception:
             pass
+        self._update_scene_panel()
 
     def showEvent(self, event):
         super().showEvent(event)
 
     def closeEvent(self, event):
-        self.cleanup_embedded_3d()
+        self.cleanup_managed_3d()
         super().closeEvent(event)

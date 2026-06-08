@@ -72,7 +72,7 @@ class OsmQuick3DPlugin:
             self.dialog = None
         if self.dock:
             try:
-                self.dock.cleanup_embedded_3d()
+                self.dock.cleanup_managed_3d()
             except Exception:
                 pass
             self.iface.removeDockWidget(self.dock)
@@ -91,7 +91,10 @@ class OsmQuick3DPlugin:
             right_area = getattr(Qt, "RightDockWidgetArea")
         self.iface.addDockWidget(right_area, self.dock)
         self.dock.show()
-        self.dock.raise_()
+        try:
+            self.dock.activateWindow()
+        except Exception:
+            pass
         try:
             try:
                 horizontal = Qt.Orientation.Horizontal
@@ -506,7 +509,7 @@ class OsmQuick3DPlugin:
             except Exception:
                 pass
         if p["open_3d"] and self.dock:
-            opened_3d = self.dock.embed_3d_view(auto=False)
+            opened_3d = self.dock.open_managed_3d_view(auto=False)
             from qgis.PyQt.QtCore import QTimer
             for delay in (600, 1500, 3000):
                 QTimer.singleShot(delay, lambda: self.dock and self.dock._refresh_3d_view(auto=True))
@@ -524,7 +527,7 @@ class OsmQuick3DPlugin:
         if p["open_3d"] and not opened_3d:
             self.iface.messageBar().pushInfo(
                 "OSM Quick 3D",
-                "Could not create the embedded 3D scene in this QGIS build "
+                "Could not create the managed QGIS 3D scene in this QGIS build "
                 "(the building layers are still configured with 3D renderers).",
             )
 
