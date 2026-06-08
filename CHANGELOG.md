@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.18.5] - 2026-06-08
+
+- Remove unsafe QWindowContainer embedding for QGIS 3.44 stability
+
 ## [0.18.4] - 2026-06-08
 
 - Fix embedded-only 3D dock scene and bind extrusion renderers to layers

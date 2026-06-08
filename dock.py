@@ -661,7 +661,9 @@ class PluginDockWidget(QDockWidget):
         self.view_layout.setContentsMargins(0, 0, 0, 0)
         self.view_layout.setSpacing(0)
 
-        self.view_placeholder = QLabel("Open the embedded 3D scene here.")
+        self.view_placeholder = QLabel(
+            "Open the native QGIS 3D scene. The plugin keeps one 3D scene active and controls it from here."
+        )
         try:
             self.view_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         except AttributeError:
@@ -1201,7 +1203,7 @@ class PluginDockWidget(QDockWidget):
 
     def _on_open_3d_clicked(self):
         if self.embed_3d_view(auto=False):
-            self.set_status("Embedded 3D scene ready.")
+            self.set_status("Native 3D scene ready.")
         else:
             self.set_status("Could not create the embedded 3D scene.", error=True)
 
@@ -1270,7 +1272,7 @@ class PluginDockWidget(QDockWidget):
     def embed_3d_view(self, auto=False):
         if not self.isVisible() and auto:
             return False
-        if self._embedded_canvas is not None and self._embedded_container is not None:
+        if self._embedded_canvas is not None:
             self._refresh_3d_view(auto=auto)
             self.tab_widget.setCurrentWidget(self.view_tab)
             return True
@@ -1321,11 +1323,7 @@ class PluginDockWidget(QDockWidget):
                 canvas.show()
                 canvas.update()
             else:
-                self._embedded_container = QWidget.createWindowContainer(canvas, self.view_host)
-                self._embedded_container.setSizePolicy(_size_policy("Expanding"), _size_policy("Expanding"))
-                self._embedded_container.setMinimumSize(220, 180)
-                self.view_layout.addWidget(self._embedded_container, 1)
-                self._embedded_container.show()
+                self._embedded_container = None
                 for method in ("requestUpdate", "update"):
                     fn = getattr(canvas, method, None)
                     if fn is None:
@@ -1356,8 +1354,15 @@ class PluginDockWidget(QDockWidget):
             self._current_bg_color(),
             layers=self._current_3d_layers(),
         )
+        try:
+            self.view_placeholder.setText(
+                "Native QGIS 3D scene is active. Use the controls here; QGIS owns the 3D viewport safely."
+            )
+            self.view_placeholder.show()
+        except Exception:
+            pass
         if not auto:
-            self.set_status("Embedded 3D scene ready.")
+            self.set_status("Native 3D scene ready.")
         return True
 
     def cleanup_embedded_3d(self):
@@ -1397,6 +1402,9 @@ class PluginDockWidget(QDockWidget):
         try:
             if self.view_layout.indexOf(self.view_placeholder) < 0:
                 self.view_layout.addWidget(self.view_placeholder, 1)
+            self.view_placeholder.setText(
+                "Open the native QGIS 3D scene. The plugin keeps one 3D scene active and controls it from here."
+            )
             self.view_placeholder.show()
         except Exception:
             pass
