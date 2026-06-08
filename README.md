@@ -10,15 +10,15 @@ OSM Quick 3D is the native sibling of [`osm_3d_model`](https://github.com/YusufE
 2. It downloads OSM via Overpass — buildings, roads, cycleways, water, greens, trees, street furniture.
 3. The layers are added to your project — inside one tidy **layer-tree group** — as native layers **already styled by function**:
    - buildings by OSM use (residential / commercial / industrial / civic / worship)
-   - roads by `highway` class — colour **and** width
+   - roads by `highway` class — colour and metric width, using OSM `width` when available
    - water blue, greens green
 4. Buildings are **extruded** with native QGIS 3D symbology — a clean **flat-roof massing** model. Height comes from OSM: `coalesce("height", "building_levels" * 3, 9)` m. **Building colours are selectable** (and identical in 2D and 3D): by OSM function, or a soft height-graduated tint — **gray, warm, teal, salmon, purple or sand**. A **height-exaggeration** factor (0.5×–5.0×) makes low-rise districts read. No roofs, no animation.
 5. Trees get a matching **3D pass** — simple green canopies on the ground — when 3D is on.
    - Each building also carries a computed **`footprint_m2`** and an estimated **`gfa_m2`** (footprint × floors) column, and the run reports the area totals — ready for quick planning quantities.
    - Optionally **label** buildings and roads by their OSM `name` (white halo).
-6. An optional **ground base** — the study area buffered outward by 5 m, extruded as a recessed plinth from −5 m up to ground level — gives the city something to stand on in 3D.
+6. An optional **ground base** — the study area buffered outward by 5 m, extruded as a recessed plinth from −2 m up to ground level — gives the city something to stand on in 3D.
 7. An optional **basemap** layer is moved underneath to be the ground (in 2D and draped under the 3D terrain).
-8. Optionally opens a **3D Map View** for you.
+8. Optionally opens a native **3D Map View** for you. The **Theme & Style** dock controls the scene, including theme presets, 3D refresh/focus, resolution, and per-layer visibility in the 3D view without hiding those layers from the 2D map.
 
 ## Persistence & caching
 

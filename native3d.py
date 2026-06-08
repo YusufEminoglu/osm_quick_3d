@@ -686,7 +686,9 @@ def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, l
             return False
 
         layer_list = list(layers) if layers is not None else _project_3d_layers(iface)
-        if layer_list and hasattr(settings, "setLayers"):
+        if layers is not None and hasattr(settings, "setLayers"):
+            settings.setLayers(layer_list)
+        elif layer_list and hasattr(settings, "setLayers"):
             settings.setLayers(layer_list)
         _apply_basemap_clip(settings, layer_list, clip_geometry=clip_geometry)
 

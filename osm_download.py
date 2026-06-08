@@ -122,7 +122,7 @@ def utm_epsg_for(lon: float, lat: float) -> int:
 # BASE_BUFFER_M and rendered as a slab whose top sits at ground level (0) and whose
 # bottom is BASE_DEPTH_M below it, i.e. a recessed plinth the city stands on.
 BASE_BUFFER_M = 5.0
-BASE_DEPTH_M = 5.0
+BASE_DEPTH_M = 2.0
 
 # Accepted study-area shapes (dialog values).
 SHAPE_RECTANGLE = "rectangle"

@@ -287,13 +287,10 @@ class PluginDockWidget(QDockWidget):
             self.tab_widget.setElideMode(getattr(Qt, "ElideRight"))
         self.download_tab = self._download_tab()
         self.live_tab = self._live_tab()
-        self.view_tab = self._view_tab()
         self.tab_widget.addTab(self.download_tab, "Build")
-        self.tab_widget.addTab(self.live_tab, "Style")
-        self.tab_widget.addTab(self.view_tab, "3D")
+        self.tab_widget.addTab(self.live_tab, "Theme & Style")
         self.tab_widget.setTabToolTip(0, "Download & Build")
-        self.tab_widget.setTabToolTip(1, "Live Styling")
-        self.tab_widget.setTabToolTip(2, "Managed native QGIS 3D scene")
+        self.tab_widget.setTabToolTip(1, "Theme, live styling, and managed 3D scene layers")
         root.addWidget(self.tab_widget, 1)
 
         self.setWidget(root_widget)
@@ -509,7 +506,7 @@ class PluginDockWidget(QDockWidget):
     def _live_tab(self):
         tab, layout = self._scroll_tab()
 
-        scene_box = QGroupBox("Scene")
+        scene_box = QGroupBox("Theme & Scene")
         scene_form = self._configure_form(QFormLayout(scene_box))
 
         target_row = QHBoxLayout()
@@ -527,11 +524,72 @@ class PluginDockWidget(QDockWidget):
         self.live_theme_combo.currentIndexChanged.connect(self._on_live_theme_changed)
         scene_form.addRow("Theme:", self.live_theme_combo)
 
+        self.theme_preview_swatches = []
+        preview_row = QHBoxLayout()
+        preview_row.setContentsMargins(0, 0, 0, 0)
+        preview_row.setSpacing(4)
+        for _ in range(6):
+            swatch = QFrame()
+            swatch.setFixedSize(28, 16)
+            swatch.setStyleSheet("QFrame{border:1px solid #c8d0d2;border-radius:4px;background:#ffffff;}")
+            preview_row.addWidget(swatch)
+            self.theme_preview_swatches.append(swatch)
+        preview_row.addStretch(1)
+        scene_form.addRow("Palette:", preview_row)
+
         self.scene_bg_color = QgsColorButton()
         self.scene_bg_color.setColor(QColor("#ffffff"))
         self.scene_bg_color.colorChanged.connect(self._apply_scene_background)
         scene_form.addRow("Background:", self.scene_bg_color)
+
+        scene_controls = QHBoxLayout()
+        scene_controls.setContentsMargins(0, 0, 0, 0)
+        scene_controls.setSpacing(5)
+        self.open_3d_btn = QPushButton("Open 3D")
+        self.open_3d_btn.setToolTip("Open or refresh the managed native QGIS 3D scene.")
+        self.open_3d_btn.clicked.connect(self._on_open_3d_clicked)
+        self.refresh_scene_btn = QPushButton("Refresh")
+        self.refresh_scene_btn.setToolTip("Reapply visible layers, clipping, resolution and camera framing to the managed 3D scene.")
+        self.refresh_scene_btn.clicked.connect(self._on_refresh_3d_clicked)
+        self.focus_3d_btn = QPushButton("Focus")
+        self.focus_3d_btn.setToolTip("Bring the managed 3D scene to the front when QGIS keeps it as a separate window.")
+        self.focus_3d_btn.clicked.connect(self._raise_3d_view)
+        self.restore_3d_btn = QPushButton("Close")
+        self.restore_3d_btn.setToolTip("Close the managed 3D scene.")
+        self.restore_3d_btn.clicked.connect(self.cleanup_managed_3d)
+        scene_controls.addWidget(self.open_3d_btn)
+        scene_controls.addWidget(self.refresh_scene_btn)
+        scene_controls.addWidget(self.focus_3d_btn)
+        scene_controls.addWidget(self.restore_3d_btn)
+        scene_form.addRow("3D view:", scene_controls)
+
+        self.scene_state_value = QLabel("Closed")
+        self.scene_group_value = QLabel("No OSM group")
+        self.scene_layers_value = QLabel("0/0")
+        self.scene_clip_value = QLabel("None")
+        self.scene_resolution_value = QLabel("1024 px")
+        for value in (
+            self.scene_state_value,
+            self.scene_group_value,
+            self.scene_layers_value,
+            self.scene_clip_value,
+            self.scene_resolution_value,
+        ):
+            value.setTextInteractionFlags(_qt_value(Qt, "TextInteractionFlag", "TextSelectableByMouse"))
+            value.setStyleSheet("font-weight:600;color:#1b3c40;")
+        scene_form.addRow("3D state:", self.scene_state_value)
+        scene_form.addRow("3D layers:", self.scene_layers_value)
+        scene_form.addRow("Basemap clip:", self.scene_clip_value)
+        scene_form.addRow("Resolution:", self.scene_resolution_value)
         layout.addWidget(scene_box)
+
+        self.layer_3d_box = QGroupBox("3D Layer Visibility")
+        self.layer_3d_grid = QGridLayout(self.layer_3d_box)
+        self.layer_3d_grid.setContentsMargins(8, 8, 8, 8)
+        self.layer_3d_grid.setHorizontalSpacing(8)
+        self.layer_3d_grid.setVerticalSpacing(4)
+        self.layer_3d_checks = {}
+        layout.addWidget(self.layer_3d_box)
 
         building_box = QGroupBox("Building Visuals")
         form = self._configure_form(QFormLayout(building_box))
@@ -627,86 +685,8 @@ class PluginDockWidget(QDockWidget):
         self.trees_size.valueChanged.connect(self._apply_advanced_changes)
         detail_form.addRow("Tree size:", self.trees_size)
         layout.addWidget(detail_box)
-        return tab
-
-    def _view_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(5)
-
-        controls = QHBoxLayout()
-        controls.setContentsMargins(0, 0, 0, 0)
-        controls.setSpacing(5)
-        self.open_3d_btn = QPushButton("Open")
-        self.open_3d_btn.setToolTip("Open or refresh the managed native QGIS 3D scene.")
-        self.open_3d_btn.clicked.connect(self._on_open_3d_clicked)
-        self.refresh_scene_btn = QPushButton("Refresh")
-        self.refresh_scene_btn.setToolTip("Reapply layers, clipping, resolution and camera framing to the managed 3D scene.")
-        self.refresh_scene_btn.clicked.connect(self._on_refresh_3d_clicked)
-        self.focus_3d_btn = QPushButton("Focus")
-        self.focus_3d_btn.setToolTip("Bring the managed 3D scene to the front when QGIS keeps it as a separate window.")
-        self.focus_3d_btn.clicked.connect(self._raise_3d_view)
-        self.restore_3d_btn = QPushButton("Close")
-        self.restore_3d_btn.setToolTip("Close the managed 3D scene.")
-        self.restore_3d_btn.clicked.connect(self.cleanup_managed_3d)
-        controls.addWidget(self.open_3d_btn)
-        controls.addWidget(self.refresh_scene_btn)
-        controls.addWidget(self.focus_3d_btn)
-        controls.addWidget(self.restore_3d_btn)
-        layout.addLayout(controls)
-
-        scene_box = QGroupBox("Managed Scene")
-        scene_grid = QGridLayout(scene_box)
-        scene_grid.setContentsMargins(8, 8, 8, 8)
-        scene_grid.setHorizontalSpacing(8)
-        scene_grid.setVerticalSpacing(4)
-        self.scene_state_value = QLabel("Closed")
-        self.scene_group_value = QLabel("No OSM group")
-        self.scene_layers_value = QLabel("0")
-        self.scene_clip_value = QLabel("None")
-        self.scene_resolution_value = QLabel("1024 px")
-        for value in (
-            self.scene_state_value,
-            self.scene_group_value,
-            self.scene_layers_value,
-            self.scene_clip_value,
-            self.scene_resolution_value,
-        ):
-            value.setTextInteractionFlags(_qt_value(Qt, "TextInteractionFlag", "TextSelectableByMouse"))
-            value.setStyleSheet("font-weight:600;color:#1b3c40;")
-        scene_grid.addWidget(QLabel("State:"), 0, 0)
-        scene_grid.addWidget(self.scene_state_value, 0, 1)
-        scene_grid.addWidget(QLabel("Group:"), 1, 0)
-        scene_grid.addWidget(self.scene_group_value, 1, 1)
-        scene_grid.addWidget(QLabel("Layers:"), 2, 0)
-        scene_grid.addWidget(self.scene_layers_value, 2, 1)
-        scene_grid.addWidget(QLabel("Basemap clip:"), 3, 0)
-        scene_grid.addWidget(self.scene_clip_value, 3, 1)
-        scene_grid.addWidget(QLabel("Resolution:"), 4, 0)
-        scene_grid.addWidget(self.scene_resolution_value, 4, 1)
-        layout.addWidget(scene_box)
-
-        self.view_host = QFrame()
-        self.view_host.setFrameShape(QFrame.Shape.StyledPanel)
-        self.view_host.setStyleSheet(
-            "QFrame{background:#101518;border:1px solid #26383b;border-radius:6px;}"
-        )
-        self.view_layout = QVBoxLayout(self.view_host)
-        self.view_layout.setContentsMargins(0, 0, 0, 0)
-        self.view_layout.setSpacing(0)
-
-        self.view_placeholder = QLabel(
-            "Download OSM data first, then open the managed QGIS 3D scene. The 3D view opens as a native QGIS window for stability; this dock controls layers, styling, labels, base, clipping, resolution and scene refresh."
-        )
-        try:
-            self.view_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        except AttributeError:
-            self.view_placeholder.setAlignment(getattr(Qt, "AlignCenter"))
-        self.view_placeholder.setWordWrap(True)
-        self.view_placeholder.setStyleSheet("color:#b7c7c5;font-size:12px;padding:16px;")
-        self.view_layout.addWidget(self.view_placeholder)
-        layout.addWidget(self.view_host, 1)
+        self._update_theme_preview()
+        self._rebuild_3d_layer_checks()
         self._update_scene_panel()
         return tab
 
@@ -806,6 +786,7 @@ class PluginDockWidget(QDockWidget):
         self._update_live_classification_enabled()
         self._update_download_color_preview()
         self._update_live_color_preview()
+        self._update_theme_preview()
 
     def _save(self, p):
         s = QgsSettings()
@@ -836,7 +817,7 @@ class PluginDockWidget(QDockWidget):
             combo.setCurrentIndex(idx)
 
     def sync_from_run_params(self, p):
-        """Mirror Build-tab choices into the live controls used by the 3D tab."""
+        """Mirror Build-tab choices into the live scene controls."""
         widgets = (
             self.live_theme_combo,
             self.live_height_scale,
@@ -866,6 +847,7 @@ class PluginDockWidget(QDockWidget):
                 widget.blockSignals(False)
         self._update_live_classification_enabled()
         self._update_live_color_preview()
+        self._update_theme_preview()
 
     def set_scene_clip_geometry(self, geometry):
         if geometry is None:
@@ -878,25 +860,105 @@ class PluginDockWidget(QDockWidget):
             self._scene_clip_geometry = None
         self._update_scene_panel()
 
+    def _update_theme_preview(self):
+        if not hasattr(self, "theme_preview_swatches"):
+            return
+        key = self.live_theme_combo.currentData() if hasattr(self, "live_theme_combo") else "default"
+        theme = styling.THEMES.get(key, styling.THEMES["default"])
+        colors = [
+            theme.get("bg", "#ffffff"),
+            theme.get("roads_major", "#e1846f"),
+            theme.get("roads_minor", "#eae5da"),
+            theme.get("greens", "#a9c08a"),
+            theme.get("water", "#a5c9eb"),
+            theme.get("building_ramp", ("#e2e8ee", "#56657d"))[1],
+        ]
+        for swatch, color in zip(self.theme_preview_swatches, colors):
+            swatch.setStyleSheet(
+                f"QFrame{{border:1px solid #c8d0d2;border-radius:4px;background:{color};}}"
+            )
+
+    def _group_layers(self):
+        group_node = self.group_combo.currentData() if hasattr(self, "group_combo") else None
+        if not group_node:
+            return []
+        layers = []
+        for child in group_node.children():
+            if isinstance(child, QgsLayerTreeLayer):
+                layer = child.layer()
+                if layer:
+                    layers.append(layer)
+        return layers
+
+    def _layer_3d_visible(self, layer):
+        try:
+            return _truthy(layer.customProperty("osm_quick_3d/visible_3d", True), True)
+        except Exception:
+            return True
+
+    def _set_layer_3d_visible(self, layer, checked):
+        try:
+            layer.setCustomProperty("osm_quick_3d/visible_3d", bool(checked))
+        except Exception:
+            pass
+        if self._managed_canvas is not None:
+            self._refresh_3d_view(auto=True)
+        else:
+            self._update_scene_panel()
+
+    def _clear_3d_layer_grid(self):
+        if not hasattr(self, "layer_3d_grid"):
+            return
+        while self.layer_3d_grid.count():
+            item = self.layer_3d_grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _rebuild_3d_layer_checks(self):
+        if not hasattr(self, "layer_3d_grid"):
+            return
+        self._clear_3d_layer_grid()
+        self.layer_3d_checks = {}
+        layers = self._group_layers()
+        if not layers:
+            empty = QLabel("Download OSM data first; visible 3D layers will appear here.")
+            empty.setWordWrap(True)
+            empty.setStyleSheet("color:#6c7b7d;font-size:11px;")
+            self.layer_3d_grid.addWidget(empty, 0, 0, 1, 2)
+            return
+        for index, layer in enumerate(layers):
+            cb = QCheckBox(layer.name())
+            cb.setChecked(self._layer_3d_visible(layer))
+            cb.setToolTip("Toggle this layer in the managed 3D Map View without hiding it from the 2D map.")
+            cb.toggled.connect(lambda checked, layer=layer: self._set_layer_3d_visible(layer, checked))
+            row = index // 2
+            col = index % 2
+            self.layer_3d_grid.addWidget(cb, row, col)
+            try:
+                self.layer_3d_checks[layer.id()] = cb
+            except Exception:
+                pass
+
     def _update_scene_panel(self):
         if not hasattr(self, "scene_state_value") or not hasattr(self, "open_3d_btn"):
             return
-        group_node = self.group_combo.currentData() if hasattr(self, "group_combo") else None
-        layers = self._current_3d_layers() if group_node else []
+        group_layers = self._group_layers()
+        layers = self._current_3d_layers() if group_layers else []
         canvas = self._managed_canvas or native3d.find_owned_3d_map_canvas(
             self.iface, self._managed_canvas_name
         )
         state = "Open" if canvas is not None else "Closed"
-        group_text = self.group_combo.currentText() if group_node else "No OSM group"
+        group_text = self.group_combo.currentText() if group_layers else "No OSM group"
         clip_text = "ROI" if self._scene_clip_geometry is not None else "None"
         resolution = self.live_map_resolution.currentData() if hasattr(self, "live_map_resolution") else None
         resolution = resolution or (self.map_resolution.currentData() if hasattr(self, "map_resolution") else 1024)
         self.scene_state_value.setText(state)
         self.scene_group_value.setText(group_text or "No OSM group")
-        self.scene_layers_value.setText(str(len(layers)))
+        self.scene_layers_value.setText(f"{len(layers)}/{len(group_layers)} visible")
         self.scene_clip_value.setText(clip_text)
         self.scene_resolution_value.setText(f"{int(resolution)} px")
-        has_layers = bool(layers)
+        has_layers = bool(group_layers)
         self.open_3d_btn.setEnabled(has_layers)
         self.refresh_scene_btn.setEnabled(has_layers)
         self.focus_3d_btn.setEnabled(canvas is not None)
@@ -947,16 +1009,20 @@ class PluginDockWidget(QDockWidget):
         )
         for widget in controls:
             widget.setEnabled(enabled)
+        if hasattr(self, "layer_3d_box"):
+            self.layer_3d_box.setEnabled(enabled)
 
     def _on_group_selected(self):
         group_node = self.group_combo.currentData()
         if not group_node:
             self._set_live_controls_enabled(False)
+            self._rebuild_3d_layer_checks()
             self._update_scene_panel()
             return
 
         self._set_live_controls_enabled(True)
         layers = self._get_layers(group_node)
+        self._rebuild_3d_layer_checks()
 
         for widget in (
             self.live_theme_combo,
@@ -1067,6 +1133,7 @@ class PluginDockWidget(QDockWidget):
 
         self._update_live_classification_enabled()
         self._update_live_color_preview()
+        self._update_theme_preview()
         self._update_scene_panel()
 
     def _get_layers(self, group_node) -> dict:
@@ -1155,6 +1222,7 @@ class PluginDockWidget(QDockWidget):
                         layer.setCustomProperty("osm_quick_3d/theme", theme_key)
 
         self._update_live_color_preview()
+        self._update_theme_preview()
         self._apply_changes()
         self._apply_advanced_changes()
         self._apply_resolution()
@@ -1344,17 +1412,7 @@ class PluginDockWidget(QDockWidget):
         return None
 
     def _current_3d_layers(self):
-        group_node = self.group_combo.currentData() if hasattr(self, "group_combo") else None
-        if group_node:
-            layers = []
-            for child in group_node.children():
-                if isinstance(child, QgsLayerTreeLayer):
-                    layer = child.layer()
-                    if layer:
-                        layers.append(layer)
-            if layers:
-                return layers
-        return []
+        return [layer for layer in self._group_layers() if self._layer_3d_visible(layer)]
 
     def _refresh_3d_view(self, auto=False):
         canvas = self._managed_canvas or native3d.find_owned_3d_map_canvas(
@@ -1382,15 +1440,15 @@ class PluginDockWidget(QDockWidget):
     def open_managed_3d_view(self, auto=False):
         if not self.isVisible() and auto:
             return False
+        group_layers = self._group_layers()
         layers = self._current_3d_layers()
-        if not layers:
+        if not group_layers:
             if not auto:
                 self.set_status("Download OSM data first; the 3D scene is created after a result group exists.", error=True)
             return False
         if self._managed_canvas is not None:
             self._refresh_3d_view(auto=auto)
-            self.tab_widget.setCurrentWidget(self.view_tab)
-            self._show_external_3d_guide()
+            self.tab_widget.setCurrentWidget(self.live_tab)
             if not auto:
                 self._raise_3d_view()
             self._update_scene_panel()
@@ -1422,24 +1480,12 @@ class PluginDockWidget(QDockWidget):
             layers=layers,
             clip_geometry=self._scene_clip_geometry,
         )
-        self._show_external_3d_guide()
+        self.tab_widget.setCurrentWidget(self.live_tab)
         if not auto:
             self._raise_3d_view()
             self.set_status("Managed QGIS 3D scene ready; use this dock to control it.")
         self._update_scene_panel()
         return True
-
-    def _show_external_3d_guide(self):
-        try:
-            if self.view_layout.indexOf(self.view_placeholder) < 0:
-                self.view_layout.addWidget(self.view_placeholder, 1)
-            self.view_placeholder.setText(
-                "The native QGIS 3D scene is managed from this dock. Keep the 3D Map View open and use the Style tab here for group selection, layer colors, height exaggeration, labels, base extrusion, trees, basemap clipping, scene background and resolution."
-            )
-            self.view_placeholder.show()
-            self.tab_widget.setCurrentWidget(self.view_tab)
-        except Exception:
-            pass
 
     def _raise_3d_view(self):
         dock = self._find_external_3d_dock()
@@ -1488,16 +1534,6 @@ class PluginDockWidget(QDockWidget):
                 pass
 
         self._managed_canvas = None
-
-        try:
-            if self.view_layout.indexOf(self.view_placeholder) < 0:
-                self.view_layout.addWidget(self.view_placeholder, 1)
-            self.view_placeholder.setText(
-                "Download OSM data first, then open the managed QGIS 3D scene. The 3D view opens as a native QGIS window for stability; this dock controls layers, styling, labels, base, clipping, resolution and scene refresh."
-            )
-            self.view_placeholder.show()
-        except Exception:
-            pass
         self._update_scene_panel()
 
     def showEvent(self, event):

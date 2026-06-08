@@ -18,6 +18,7 @@ from qgis.core import (
     QgsRendererCategory,
     QgsSingleSymbolRenderer,
     QgsSymbolLayer,
+    QgsUnitTypes,
 )
 
 # ── palettes ────────────────────────────────────────────────────────────────
@@ -40,6 +41,16 @@ ROAD_STYLE = {
     "service": ("#e4dfd4", 0.4, False),
     "foot": ("#d2b59a", 0.5, True),
     "other": ("#e0dbd0", 0.5, False),
+}
+ROAD_WIDTH_M = {
+    "major": 24.0,
+    "primary": 18.0,
+    "secondary": 14.0,
+    "tertiary": 11.0,
+    "residential": 7.0,
+    "service": 4.0,
+    "foot": 2.5,
+    "other": 5.0,
 }
 GREEN_COLORS = {
     "park": ("#a9c08a", "#7c8a68"),
@@ -150,6 +161,63 @@ THEMES = {
             "other": "#606060",
         },
     },
+    "atlas": {
+        "label": "Civic Atlas (Clean / Legible)",
+        "bg": "#f7f8f2",
+        "base": "#566b6f",
+        "roads_major": "#2f4858",
+        "roads_minor": "#d8d7ce",
+        "greens": "#7fb069",
+        "water": "#3a86b5",
+        "trees": "#3f7d4e",
+        "building_ramp": ("#edf0e8", "#496a81"),
+        "building_colors": {
+            "residential": "#d9c8b4",
+            "commercial": "#a9bdd0",
+            "industrial": "#c4b79a",
+            "civic": "#b8d5ce",
+            "worship": "#d9c7df",
+            "other": "#cfd0c8",
+        },
+    },
+    "mediterranean": {
+        "label": "Mediterranean Survey (Sun / Sea)",
+        "bg": "#fbf4e6",
+        "base": "#8a7a5a",
+        "roads_major": "#c65f46",
+        "roads_minor": "#eadfc9",
+        "greens": "#86a873",
+        "water": "#4fa6c6",
+        "trees": "#4e7f55",
+        "building_ramp": ("#f1e1cf", "#a96e4d"),
+        "building_colors": {
+            "residential": "#e7c7aa",
+            "commercial": "#b8cad8",
+            "industrial": "#d4b98d",
+            "civic": "#c8d9c9",
+            "worship": "#ddc2d9",
+            "other": "#d8cfc1",
+        },
+    },
+    "nightprint": {
+        "label": "Night Print (Dark / Cartographic)",
+        "bg": "#11161a",
+        "base": "#1b2628",
+        "roads_major": "#ffd166",
+        "roads_minor": "#2d3a3f",
+        "greens": "#2a6f58",
+        "water": "#118ab2",
+        "trees": "#5fbf7a",
+        "building_ramp": ("#27343b", "#e6edf0"),
+        "building_colors": {
+            "residential": "#7d8da1",
+            "commercial": "#f4a261",
+            "industrial": "#a7a16d",
+            "civic": "#74c0c2",
+            "worship": "#b28fd8",
+            "other": "#98a0a6",
+        },
+    },
 }
 
 # OSM tag values are emitted lower-cased by osm_download; lower() here is a
@@ -178,6 +246,23 @@ ROAD_CLASS_EXPR = (
     " WHEN lower(\"highway\") IN ('service','track') THEN 'service'"
     " WHEN lower(\"highway\") IN ('footway','path','pedestrian','steps','corridor','bridleway') THEN 'foot'"
     " ELSE 'other' END"
+)
+ROAD_WIDTH_M_EXPR = (
+    "coalesce(to_real(\"width\"), "
+    "CASE"
+    " WHEN lower(\"highway\") IN ('motorway','trunk','motorway_link','trunk_link') THEN 24"
+    " WHEN lower(\"highway\") IN ('primary','primary_link') THEN 18"
+    " WHEN lower(\"highway\") IN ('secondary','secondary_link') THEN 14"
+    " WHEN lower(\"highway\") IN ('tertiary','tertiary_link') THEN 11"
+    " WHEN lower(\"highway\") IN ('residential','unclassified','living_street','road') THEN 7"
+    " WHEN lower(\"highway\") IN ('service','track') THEN 4"
+    " WHEN lower(\"highway\") IN ('footway','path','pedestrian','steps','corridor','bridleway') THEN 2.5"
+    " ELSE 5 END)"
+)
+ROAD_RENDER_WIDTH_EXPR = (
+    f"CASE WHEN ({ROAD_WIDTH_M_EXPR}) < 1.5 THEN 1.5 "
+    f"WHEN ({ROAD_WIDTH_M_EXPR}) > 30 THEN 30 "
+    f"ELSE ({ROAD_WIDTH_M_EXPR}) END"
 )
 GREEN_CLASS_EXPR = (
     "CASE"
@@ -403,11 +488,34 @@ def _fill(color_hex, outline="#8d8378", outline_w=0.16):
     })
 
 
-def _line(color_hex, width, dashed=False):
+def _render_map_units():
+    try:
+        return QgsUnitTypes.RenderUnit.RenderMapUnits
+    except AttributeError:
+        return QgsUnitTypes.RenderMapUnits
+
+
+def _line(color_hex, width, dashed=False, map_units=False, width_expression=None):
     props = {"color": color_hex, "width": str(width), "capstyle": "round", "joinstyle": "round"}
     if dashed:
         props["line_style"] = "dash"
-    return QgsLineSymbol.createSimple(props)
+    symbol = QgsLineSymbol.createSimple(props)
+    if map_units:
+        try:
+            symbol.setWidthUnit(_render_map_units())
+        except Exception:
+            pass
+    if width_expression:
+        prop_key = getattr(QgsSymbolLayer, "PropertyStrokeWidth", None)
+        if prop_key is None:
+            prop_key = getattr(QgsSymbolLayer, "PropertyWidth", None)
+        if prop_key is not None:
+            try:
+                symbol.symbolLayer(0).setDataDefinedProperty(
+                    prop_key, QgsProperty.fromExpression(width_expression))
+            except Exception:
+                pass
+    return symbol
 
 
 def _marker(color_hex, size=2.0, outline="#5f574d"):
@@ -457,7 +565,13 @@ def style_roads(layer, theme="default"):
     mapping = {}
     for k, (c, w, d) in ROAD_STYLE.items():
         color = major_color if k in ("major", "primary", "secondary", "tertiary") else minor_color
-        mapping[k] = _line(color, w, d)
+        mapping[k] = _line(
+            color,
+            ROAD_WIDTH_M.get(k, 5.0),
+            d,
+            map_units=True,
+            width_expression=ROAD_RENDER_WIDTH_EXPR,
+        )
     layer.setRenderer(_categorized(ROAD_CLASS_EXPR, mapping))
     layer.triggerRepaint()
 
@@ -491,7 +605,14 @@ def style_waterareas(layer, theme="default"):
 
 
 def style_bikelanes(layer):
-    layer.setRenderer(QgsSingleSymbolRenderer(_line("#8fbf8f", 0.6, dashed=True)))
+    expr = (
+        'CASE WHEN coalesce(to_real("width"), 2.2) < 1 THEN 1 '
+        'WHEN coalesce(to_real("width"), 2.2) > 6 THEN 6 '
+        'ELSE coalesce(to_real("width"), 2.2) END'
+    )
+    layer.setRenderer(QgsSingleSymbolRenderer(
+        _line("#8fbf8f", 2.2, dashed=True, map_units=True, width_expression=expr)
+    ))
     layer.triggerRepaint()
 
 

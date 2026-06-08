@@ -133,6 +133,16 @@ def test_building_color_expression():
     check("continuous ramp uses color_rgb", expr_cont.startswith("color_rgb("))
 
 
+def test_road_width_and_themes():
+    print("road width + themes")
+    check("road width expression uses width field", '"width"' in styling.ROAD_WIDTH_M_EXPR)
+    check("road render width clamps minimum", "< 1.5" in styling.ROAD_RENDER_WIDTH_EXPR)
+    check("major road default is wide", styling.ROAD_WIDTH_M["major"] > styling.ROAD_WIDTH_M["residential"])
+    check("new atlas theme exists", "atlas" in styling.THEMES)
+    check("new mediterranean theme exists", "mediterranean" in styling.THEMES)
+    check("new nightprint theme exists", "nightprint" in styling.THEMES)
+
+
 def test_building_color_modes():
     print("building colour modes (height/tints)")
     expected = 1 + len(styling._BUILDING_RAMPS)
@@ -197,7 +207,7 @@ def test_shape_and_base_constants():
     check("four area shapes", len(osm.AREA_SHAPES) == 4)
     check("rectangle in shapes", osm.SHAPE_RECTANGLE in osm.AREA_SHAPES)
     check("hexagon in shapes", osm.SHAPE_HEXAGON in osm.AREA_SHAPES)
-    check("base depth 5 m", osm.BASE_DEPTH_M == 5.0)
+    check("base depth 2 m", osm.BASE_DEPTH_M == 2.0)
     check("base buffer 5 m", osm.BASE_BUFFER_M == 5.0)
 
 
@@ -245,7 +255,7 @@ def test_new_features():
 def main():
     for test in (test_parse_osm_number, test_building_levels, test_utm_epsg,
                  test_waterway_width, test_building_color_expression,
-                 test_building_color_modes, test_extrusion_expression,
+                 test_road_width_and_themes, test_building_color_modes, test_extrusion_expression,
                  test_cache_roundtrip, test_clear_cache,
                  test_shape_and_base_constants, test_geometry_transform_result_helper,
                  test_new_features):

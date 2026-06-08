@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.18.9] - 2026-06-08
+
+- Remove the stale 3D panel, add 3D layer visibility, metric road widths, 2m base depth, and new themes
+
 ## [0.18.8] - 2026-06-08
 
 - Remove unsafe 3D dock embedding and ship a managed native 3D scene controller

@@ -533,34 +533,3 @@ class OsmQuick3DPlugin:
 
     def _error(self, title, text):
         QMessageBox.critical(self.iface.mainWindow(), title, text)
-
-    def _dock_3d_above_controller(self):
-        """Programmatically stack the QGIS 3D view dock widget directly above our controller dock."""
-        try:
-            from qgis.PyQt.QtWidgets import QDockWidget, QWidget
-            from qgis.PyQt.QtCore import Qt
-            
-            c3d_dock = None
-            win = self.iface.mainWindow()
-            for w in win.findChildren(QWidget):
-                if w.metaObject().className() == "Qgs3DMapCanvas":
-                    curr = w
-                    while curr is not None:
-                        if isinstance(curr, QDockWidget):
-                            c3d_dock = curr
-                            break
-                        curr = curr.parent()
-                    if c3d_dock:
-                        break
-            
-            if c3d_dock and self.dock:
-                c3d_dock.setFloating(True)
-                self.dock.setFloating(True)
-                win.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, c3d_dock)
-                win.splitDockWidget(c3d_dock, self.dock, Qt.Vertical)
-                c3d_dock.setFloating(False)
-                self.dock.setFloating(False)
-                c3d_dock.show()
-                self.dock.show()
-        except Exception:
-            pass
