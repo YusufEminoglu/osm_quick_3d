@@ -1,41 +1,173 @@
+<div align="center">
+
+![OSM Quick 3D](media/banner.png)
+
 # OSM Quick 3D
 
-One-click OpenStreetMap into **native QGIS**: function-styled 2D layers, a flat-roof **3D building massing** model, and an optional basemap underlay. No browser, no web server — built for **larger areas** than a web 3D scene.
+**One click: OpenStreetMap → a native QGIS 3D city.**
 
-OSM Quick 3D is the native sibling of [`osm_3d_model`](https://github.com/YusufEminoglu/osm_3d_model) (the browser / Three.js viewer). Same OpenStreetMap logic, but the data lands directly in QGIS as plain layers you can analyse, edit and view in QGIS's own 3D Map View.
+[![Release](https://img.shields.io/github/v/release/YusufEminoglu/osm_quick_3d?color=4a7a76&label=release)](https://github.com/YusufEminoglu/osm_quick_3d/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![QGIS](https://img.shields.io/badge/QGIS-3.x%20%2B%204.x-589632?logo=qgis&logoColor=white)](https://qgis.org)
+[![Data](https://img.shields.io/badge/data-%C2%A9%20OpenStreetMap-7ebc6f?logo=openstreetmap&logoColor=white)](https://www.openstreetmap.org/copyright)
 
-## What it does
+Draw nothing, configure nothing twice. Pick an area, press one button —
+**styled 2D layers + a flat-roof 3D massing model land straight in your QGIS project.**
+No browser, no web server, no external dependencies.
 
-1. Pick the **visible map area** (or the extent of your **selected features**) and a **study-area shape** — rectangle, rounded rectangle, circle, hexagon, or your **own selected polygon**. Features are clipped to that shape. (Polygon mode clips OSM to the polygon feature(s) you have selected in the active layer, so you can work over any custom boundary.)
-2. It downloads OSM via Overpass — buildings, roads, cycleways, water, greens, trees, street furniture.
-3. The layers are added to your project — inside one tidy **layer-tree group** — as native layers **already styled by function**:
-   - buildings by OSM use (residential / commercial / industrial / civic / worship)
-   - roads by `highway` class — colour and metric width, using OSM `width` when available
-   - water blue, greens green
-4. Buildings are **extruded** with native QGIS 3D symbology — a clean **flat-roof massing** model. Height comes from OSM: `coalesce("height", "building_levels" * 3, 9)` m. **Building colours are selectable** (and identical in 2D and 3D): by OSM function, or a soft height-graduated tint — **gray, warm, teal, salmon, purple or sand**. A whole-scene **map theme** can be picked too (Muted Planning, Tokyo Cyber, Editorial Paper, Nordic Frost, Monochrome Noir, Civic Atlas, Mediterranean, Night Print, **Anime Cel**, **Desert Dunes**, **Pastel Candy** and **Vaporwave**), recolouring buildings, roads, water and greens at once. A **height-exaggeration** factor (0.5×–5.0×) makes low-rise districts read. No roofs, no animation.
-5. Trees get a matching **3D pass** — simple green canopies on the ground — when 3D is on.
-   - Each building also carries a computed **`footprint_m2`** and an estimated **`gfa_m2`** (footprint × floors) column, and the run reports the area totals — ready for quick planning quantities.
-   - Optionally **label** buildings and roads by their OSM `name` (white halo).
-6. An optional **ground base** — the study area buffered outward by 5 m, extruded as a recessed plinth from −2 m up to ground level — gives the city something to stand on in 3D.
-7. An optional **basemap** layer is moved underneath to be the ground (in 2D and draped under the 3D terrain).
-8. Optionally opens a native **3D Map View** for you. The **Theme & Style** dock controls the scene, including theme presets, 3D refresh/focus, resolution, and per-layer visibility in the 3D view without hiding those layers from the 2D map.
+[Install](#-installation) · [What you get](#-what-you-get) · [Themes](#-12-map-themes) · [Live 3D dock](#-the-dock-build--tune-live) · [vs. osm_3d_model](#-which-one-do-i-want) · [Türkçe](#-türkçe-özet)
 
-## Persistence & caching
+</div>
 
-- **Save to GeoPackage** (optional): every downloaded layer is written into one `.gpkg` and reloaded from it, so the result survives a project reload instead of vanishing as a memory layer.
-- **Overpass disk cache** (on by default): responses are cached for a week, keyed by the exact query, so re-running on the same area opens instantly without hitting the rate-limited public API again.
+---
 
-## Install (development)
+## ✨ Why OSM Quick 3D?
 
-Set `QGIS_PLUGINPATH` to the monorepo root and restart QGIS, or install the packaged zip via *Plugins ▸ Install from ZIP*.
+| | |
+|---|---|
+| 🗺 **Real QGIS layers** | Everything arrives as native vector layers in one tidy layer-tree group — analyse, edit, label, export. Nothing is locked inside a viewer. |
+| 🏙 **Instant 3D massing** | Buildings extrude with native QGIS 3D symbology. Height from OSM: `coalesce(height, levels × 3, 9)` m, with a 0.5×–5.0× exaggeration slider for low-rise districts. |
+| 🎨 **12 map themes, 8 building palettes** | Recolour the whole scene — buildings, roads, water, greens **and** the 3D massing — in one click, from *Muted Planning* to *Vaporwave*. |
+| 📐 **Planning quantities included** | Every building carries computed `footprint_m2` and estimated `gfa_m2` columns; the run reports area totals. Ready for quick density checks. |
+| 📦 **Survives reloads & rate limits** | Optional one-file GeoPackage save, plus a one-week Overpass disk cache so re-runs open instantly without hammering the public API. |
 
-## Notes & limits
+---
 
-- The output is plain native layers, so QGIS handles **large areas** comfortably; the real bottleneck is the public **Overpass API** — big requests can be slow or hit element limits. The dialog clamps the requested area to a maximum about its centre.
-- QGIS's 3D module is an optional build. If it is missing, the layers are still added in 2D (styled) and you get a hint to open a 3D Map View manually.
+## 🚀 What you get
 
-## License
+One click downloads and styles, clipped to your chosen study-area shape
+(**rectangle · rounded rectangle · circle · hexagon · your own selected polygon**):
 
-MIT © Yusuf Eminoglu. Data © OpenStreetMap contributors.
+```text
+OSM Quick 3D — EPSG:xxxxx           ← one tidy layer-tree group
+ ├─ Buildings    categorized by OSM use (residential/commercial/industrial/civic/worship)
+ │                + footprint_m2 + gfa_m2 columns, extruded in 3D
+ ├─ Roads        by highway class, metric widths (honours OSM width=*)
+ ├─ Cycleways    dedicated styling
+ ├─ Water        rivers, lakes, ponds, riverbanks — areas filled, ways ribboned
+ ├─ Greens       parks, forests, orchards, plus car parks (grey) & plazas (stone)
+ ├─ Trees        OSM tree points + procedurally scattered park canopies, 3D spheres
+ └─ Ground base  optional recessed plinth the city stands on (theme-tinted)
+```
 
-[Changelog](CHANGELOG.md) · [PlanX monorepo](https://github.com/YusufEminoglu)
+- **Relation multipolygons** are imported — courtyard buildings and complex parks aren't silently dropped.
+- An optional **basemap underlay** is moved beneath the city and **visually clipped to the plinth** (inverted-polygon mask), so the 3D view reads as a clean floating island, not a bleeding rectangle.
+- Optional **name labels** (white halo) for buildings and roads.
+- Boundary clipping uses Multi* geometry types, so split features survive on large areas.
+
+---
+
+## 🎨 12 Map Themes
+
+Each theme recolours buildings, roads, water, greens, the ground base **and the native 3D massing** together:
+
+| | | | |
+|---|---|---|---|
+| Muted Planning | Tokyo Cyber | Editorial Paper | Nordic Frost |
+| Monochrome Noir | Civic Atlas | Mediterranean | Night Print |
+| Anime Cel | Desert Dunes | Pastel Candy | Vaporwave |
+
+Building colours are independently selectable — **identical in 2D and 3D** from a single ramp:
+*By function* · *By height* · soft tints in **gray / warm / teal / salmon / purple / sand**, with a live gradient preview swatch in the dock.
+
+---
+
+## 🎛 The Dock: build → tune live
+
+A single dockable panel with two tabs:
+
+| Tab | What it does |
+|---|---|
+| **Build** | Study-area shape & max-area cap, layer toggles, 3D & ground base, basemap underlay, GeoPackage save, Overpass cache controls (incl. *Clear cache*). |
+| **Theme & Style** | Live retuning **without re-downloading**: theme preset, building colour mode, height exaggeration, height classification (continuous/discrete/quantile), labels, base depth & transparency, 3D map tile resolution (256–4096 px), per-layer 3D visibility (hide in 3D, keep in 2D), 3D refresh/focus. |
+
+---
+
+## 🤔 Which one do I want?
+
+| | **OSM Quick 3D** *(this plugin)* | [osm_3d_model](https://github.com/YusufEminoglu/osm_3d_model) |
+|---|---|---|
+| Output | Native QGIS layers + QGIS 3D view | Three.js web viewer (animated, textured) |
+| Best for | **Larger areas**, analysis, printing, editing | Presentation scenes, facades, traffic animation |
+| Needs a browser | No | Yes (bundled local server) |
+| Data lands in your project | ✅ editable vectors | ❌ exported web scene |
+| Roofs / vehicles / pedestrians | Flat massing only | ✅ procedural |
+
+Same OpenStreetMap download logic under the hood — pick by deliverable.
+
+---
+
+## 📦 Installation
+
+**From QGIS Plugin Hub** *(recommended)*
+> `Plugins → Manage and Install Plugins…` → search **OSM Quick 3D** → Install.
+
+**From ZIP**
+> Download the latest zip from [Releases](https://github.com/YusufEminoglu/osm_quick_3d/releases) → `Plugins → Install from ZIP`.
+
+**From source** *(development)*
+```text
+git clone https://github.com/YusufEminoglu/osm_quick_3d.git
+set QGIS_PLUGINPATH=<clone parent dir>   →  restart QGIS
+```
+
+| Requirement | Value |
+|---|---|
+| QGIS | 3.x and 4.x (defensive fallbacks for both; 3D module optional — degrades to styled 2D) |
+| Dependencies | None — pure `qgis.core` / `qgis.gui` / `qgis.PyQt` |
+| License | [MIT](LICENSE) — data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) |
+
+> **Note on area size:** the practical limit is the public **Overpass API**, not QGIS — big requests can be slow or hit element limits. The plugin clamps the requested area about its centre, and the disk cache spares the API on re-runs.
+
+---
+
+## 🧪 Quality
+
+- Headless test harness — `tests/test_pure_logic.py` exercises the pure-Python parsing, floor-count, UTM, width and cache logic without a QGIS install.
+- Overpass cache keys are SHA-256; the codebase passes the QGIS Plugin Hub security scan (Bandit) with no High/Medium findings.
+- Defensive throughout: missing 3D module, missing labeling API, failed GeoPackage writes — every path degrades gracefully with a clear message instead of a crash.
+
+---
+
+## 🇹🇷 Türkçe Özet
+
+**OSM Quick 3D**, tek tıkla OpenStreetMap verisini **doğrudan QGIS'e** getirir — tarayıcı yok, web sunucusu yok:
+
+- **Çalışma alanı şekli seçilebilir:** dikdörtgen, yuvarlatılmış dikdörtgen, daire, altıgen veya **kendi seçtiğiniz poligon**; tüm veriler bu sınıra kırpılır.
+- **İşleve göre stillenmiş katmanlar:** binalar (konut/ticari/sanayi/kamu/ibadet), yollar (OSM sınıfına göre metrik genişlik), su, yeşil alanlar, otoparklar, meydanlar, ağaçlar — tek bir katman grubunda.
+- **Yerli QGIS 3D kütle modeli:** bina yükseklikleri OSM'den (`height` → kat sayısı × 3 → 9 m); 0.5×–5.0× yükseklik abartma; ağaçlara 3D tepe taçları; şehrin üzerinde durduğu **zemin kaidesi**.
+- **12 harita teması + 8 bina paleti** — 2D ve 3D'de birebir aynı renkler; dock panelinden indirmeden **canlı** ayarlanır.
+- **Planlama büyüklükleri hazır:** her binada `footprint_m2` (taban alanı) ve `gfa_m2` (tahmini toplam inşaat alanı) kolonları.
+- **GeoPackage kaydı** (proje yeniden açılınca katmanlar kaybolmaz) ve **1 haftalık Overpass disk önbelleği** (aynı alanda tekrar çalıştırma anında açılır).
+
+Kurulum: QGIS → *Eklentiler → Eklentileri Yönet ve Kur* → **OSM Quick 3D** aratın.
+
+---
+
+## 🌐 The PlanX Ecosystem
+
+| Plugin | What it does |
+|---|---|
+| [osm_3d_model](https://github.com/YusufEminoglu/osm_3d_model) | Browser sibling — animated Three.js 3D city scenes |
+| **OSM Quick 3D** | *This plugin* — native QGIS layers + 3D massing |
+| [PlanX](https://github.com/YusufEminoglu/PlanX) | Urban planning main suite |
+| [PlanX CAD Toolset](https://github.com/YusufEminoglu/PlanX-CAD) | CAD drafting, measuring, road platforms in QGIS |
+| [PlanX 3D City Viewer](https://github.com/YusufEminoglu/planx_3d_city) | QGIS project → Three.js 3D city viewer |
+| [PlanX GeoStats Lab](https://github.com/YusufEminoglu/PlanX-GeoStats) | Spatial statistics, hot spots, LISA, regression |
+
+---
+
+## 🤝 Contributing & Support
+
+- 🐛 **Bugs / requests** → [Issues](https://github.com/YusufEminoglu/osm_quick_3d/issues)
+- 📜 **Changelog** → [CHANGELOG.md](CHANGELOG.md) follows *Keep a Changelog*
+- ✅ Before a PR: run `py -3 tests/test_pure_logic.py` (headless, no QGIS required)
+
+## 👤 Author
+
+**Yusuf Eminoğlu** — urban planner & developer
+[GitHub](https://github.com/YusufEminoglu) · yusuf.eminoglu@deu.edu.tr
+
+<div align="center">
+<sub>Map data © OpenStreetMap contributors. If OSM Quick 3D saves you an afternoon, a ⭐ helps others find it.</sub>
+</div>

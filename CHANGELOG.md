@@ -1,5 +1,8 @@
 # Changelog
 
+All notable changes to **OSM Quick 3D** are documented here.
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
+
 ## [0.19.0] - 2026-06-08
 
 - **Polygon study area**: a new **"Polygon (selected feature)"** shape clips OSM to your own selected polygon feature(s) in the active layer (dissolved if several, reprojected to the area's UTM zone and cropped to the Max-area cap), so you can work over any custom boundary — not only the inscribed rectangle/rounded/circle/hexagon shapes. Select the polygon(s) first, then run; a hint and a clear error guide the workflow.
@@ -52,17 +55,9 @@
 
 - Release v0.17.0
 
-## [0.17.0] - 2026-06-08
-
-- Release v0.17.0
-
 ## [0.16.0] - 2026-06-08
 
 - Fix visual basemap clipping black borders in 3D Map View and add Advanced Layer Styling tab
-
-## [0.16.0] - 2026-06-08
-
-- Release v0.16.0
 
 ## [0.15.0] - 2026-06-08
 
@@ -105,9 +100,6 @@
 ## [0.10.0] - 2026-06-07
 
 - Add relation multipolygon support, water areas, tree scattering, and car parks/plazas
-
-All notable changes to **OSM Quick 3D** are documented here.
-Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · versioning: [SemVer](https://semver.org/).
 
 ## [0.9.0] - 2026-06-05
 
