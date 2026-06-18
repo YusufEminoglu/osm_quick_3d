@@ -7,7 +7,7 @@ authors:
     orcid: "https://orcid.org/0009-0005-6000-2934"
 title: "OSM Quick 3D"
 version: "0.19.0"
-# doi: "" # Zenodo DOI numarasi alindiktan sonra buraya eklenebilir
+doi: "10.5281/zenodo.20753123"
 date-released: "2026-06-18"
 url: "https://github.com/YusufEminoglu/osm_quick_3d"
 abstract: "One-click OpenStreetMap into native QGIS: function-styled vector layers plus flat-roof 3D building massing on a selectable study-area shape (rectangle, rounded rectangle, circle, hexagon or your own selected polygon), with selectable map themes, an optional recessed base and a basemap underlay."
