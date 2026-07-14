@@ -78,6 +78,7 @@ class PluginDockWidget(QDockWidget):
     """Docked plugin surface with build, live styling, and native 3D scene control."""
 
     runRequested = pyqtSignal(dict)
+    basemapRequested = pyqtSignal()
 
     _QSS = """
     QDockWidget {
@@ -383,6 +384,28 @@ class PluginDockWidget(QDockWidget):
             "Build — download OSM and create the layers. These choices set the first "
             "render; you fine-tune the look live in the Theme & Style tab afterwards."
         ))
+        # Quick utility: drop a live OpenStreetMap tile basemap on the canvas so
+        # you can see and frame the study area before downloading anything. It's
+        # the fastest way to get your bearings; the download step is separate.
+        self.add_basemap_btn = QPushButton("Add OSM basemap")
+        self.add_basemap_btn.setObjectName("BasemapBtn")
+        self.add_basemap_btn.setToolTip(
+            "Add a live OpenStreetMap tile layer to the map canvas to frame your "
+            "area before downloading. Added once; it sits under your other layers."
+        )
+        self.add_basemap_btn.setStyleSheet(
+            "QPushButton#BasemapBtn{background-color:#ffffff;border:1px solid #b7c7c5;"
+            "color:#2f756f;font-weight:600;border-radius:6px;padding:7px 12px;}"
+            "QPushButton#BasemapBtn:hover{background-color:#eef5f4;border-color:#2f756f;}"
+            "QPushButton#BasemapBtn:pressed{background-color:#e0edeb;}"
+        )
+        try:
+            self.add_basemap_btn.setCursor(_qt_value(Qt, "CursorShape", "PointingHandCursor"))
+        except Exception:
+            pass
+        self.add_basemap_btn.clicked.connect(self.basemapRequested.emit)
+        layout.addWidget(self.add_basemap_btn)
+
         layout.addWidget(self._download_area_group())
         layout.addWidget(self._download_layers_group())
         layout.addWidget(self._download_3d_group())

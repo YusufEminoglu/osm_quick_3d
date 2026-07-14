@@ -20,6 +20,7 @@ from qgis.core import (
     QgsCoordinateTransform,
     QgsGeometry,
     QgsProject,
+    QgsRasterLayer,
     QgsRectangle,
     QgsVectorLayer,
 )
@@ -96,6 +97,7 @@ class OsmQuick3DPlugin:
             from .dock import PluginDockWidget
             self.dock = PluginDockWidget(self.iface, self.iface.mainWindow())
             self.dock.runRequested.connect(self.run_action)
+            self.dock.basemapRequested.connect(self.add_osm_basemap)
         self.dock.refresh_groups()
         try:
             right_area = Qt.DockWidgetArea.RightDockWidgetArea
@@ -115,6 +117,49 @@ class OsmQuick3DPlugin:
             self.iface.mainWindow().resizeDocks([self.dock], [430], horizontal)
         except Exception:
             pass
+
+    # ── OSM basemap ────────────────────────────────────────────────────────
+    OSM_BASEMAP_NAME = "OpenStreetMap"
+    OSM_BASEMAP_URI = (
+        "type=xyz&url=https://tile.openstreetmap.org/%7Bz%7D/%7Bx%7D/%7By%7D.png"
+        "&zmax=19&zmin=0&crs=EPSG3857"
+    )
+
+    def add_osm_basemap(self):
+        """Add a live OpenStreetMap XYZ tile layer to the canvas as a basemap.
+
+        A one-click way to see and frame the study area before downloading. The
+        layer is added to the bottom of the layer tree so it sits under any other
+        layers, and re-clicking reuses the existing basemap instead of stacking
+        duplicates.
+        """
+        project = QgsProject.instance()
+        root = project.layerTreeRoot()
+
+        # Reuse an existing OSM basemap rather than stacking duplicates.
+        for layer in project.mapLayers().values():
+            if (
+                isinstance(layer, QgsRasterLayer)
+                and layer.name() == self.OSM_BASEMAP_NAME
+                and "tile.openstreetmap.org" in layer.source()
+            ):
+                node = root.findLayer(layer.id())
+                if node is not None:
+                    node.setItemVisibilityChecked(True)
+                self._set_status("OSM basemap is already on the map.")
+                return
+
+        layer = QgsRasterLayer(self.OSM_BASEMAP_URI, self.OSM_BASEMAP_NAME, "wms")
+        if not layer.isValid():
+            self._set_status(
+                "Could not load the OSM basemap (no network, or tiles unavailable).",
+                error=True,
+            )
+            return
+
+        project.addMapLayer(layer, False)
+        root.addLayer(layer)  # append = bottom of the tree, under other layers
+        self._set_status("Added the OpenStreetMap basemap. © OpenStreetMap contributors.")
 
     # ── helpers ────────────────────────────────────────────────────────────
     def _set_status(self, text, error=False):

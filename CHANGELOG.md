@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.20.0] - 2026-07-14
+
+- **Add OSM basemap button**: a new one-click button at the top of the **Build** tab drops a live OpenStreetMap tile layer onto the map canvas, so you can see and frame your study area before downloading anything. It is added once (re-clicking reuses the existing basemap instead of stacking duplicates) and is placed at the bottom of the layer tree, under your other layers.
+
 ## [0.19.1] - 2026-06-18
 
 - docs: add CITATION.cff for Zenodo DOI integration
