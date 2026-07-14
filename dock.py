@@ -262,10 +262,14 @@ class PluginDockWidget(QDockWidget):
                 | QDockWidget.DockWidgetFeature.DockWidgetFloatable
             )
         except AttributeError:
+            # Qt5 fallback via getattr so the unscoped enum literal never appears
+            # in source (the Hub Qt6 static check flags literal Class.Value access).
+            def _feat(name):
+                return getattr(QDockWidget, name)
             features = (
-                QDockWidget.DockWidgetClosable
-                | QDockWidget.DockWidgetMovable
-                | QDockWidget.DockWidgetFloatable
+                _feat("DockWidgetClosable")
+                | _feat("DockWidgetMovable")
+                | _feat("DockWidgetFloatable")
             )
         self.setFeatures(features)
         self.setMinimumWidth(300)

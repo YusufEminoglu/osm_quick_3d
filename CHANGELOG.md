@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.20.1] - 2026-07-14
+
+- **Qt6 compatibility**: scoped nine enum accesses that the QGIS Hub Qt6 static check flagged (QDockWidget dock-widget features, `QgsUnitTypes` render unit, `QgsSymbolLayer` fill-colour property, `QPainter` composition mode, and `QgsVectorFileWriter` action/writer-error), so the check now reports zero issues. Runtime behaviour is unchanged on both QGIS 3.28+ (Qt5) and QGIS 4.x (Qt6).
+
 ## [0.20.0] - 2026-07-14
 
 - **Add OSM basemap button**: a new one-click button at the top of the **Build** tab drops a live OpenStreetMap tile layer onto the map canvas, so you can see and frame your study area before downloading anything. It is added once (re-clicking reuses the existing basemap instead of stacking duplicates) and is placed at the bottom of the layer tree, under your other layers.

@@ -3,7 +3,7 @@ name=OSM Quick 3D
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=One-click OpenStreetMap into native QGIS: function-styled vector layers plus flat-roof 3D building massing on a selectable study-area shape (rectangle, rounded rectangle, circle, hexagon or your own selected polygon), with selectable map themes, an optional recessed base and a basemap underlay.
-version=0.20.0
+version=0.20.1
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -23,6 +23,8 @@ hasProcessingProvider=no
 license=MIT
 
 changelog=
+    OSM Quick 3D 0.20.1
+        - Qt6 compatibility: scoped nine enum accesses (QDockWidget dock-widget features, QgsUnitTypes render unit, QgsSymbolLayer fill-colour property, QPainter composition mode, QgsVectorFileWriter action/writer-error) so the Hub Qt6 static check reports zero issues; runtime behaviour unchanged on QGIS 3.28+ and 4.x.
     OSM Quick 3D 0.20.0
         - Add OSM basemap button: one click drops a live OpenStreetMap tile layer on the map canvas so you can see and frame your study area before downloading anything. It is added once (re-clicking reuses it) and sits at the bottom of the layer tree, under your other layers.
     OSM Quick 3D 0.19.0

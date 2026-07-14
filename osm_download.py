@@ -41,7 +41,7 @@ OVERPASS_ENDPOINTS = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
-USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.20.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
+USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.20.1 (https://github.com/YusufEminoglu/osm_quick_3d)"
 DEFAULT_TIMEOUT_S = 60
 
 # Disk cache for Overpass responses. The public API is frequently rate-limited
@@ -559,9 +559,10 @@ def write_layer_to_gpkg(layer: QgsVectorLayer, gpkg_path: str, layer_name: str,
     options.driverName = "GPKG"
     options.layerName = layer_name
     options.fileEncoding = "UTF-8"
+    _action = getattr(QgsVectorFileWriter, "ActionOnExistingFile", QgsVectorFileWriter)
     options.actionOnExistingFile = (
-        QgsVectorFileWriter.CreateOrOverwriteFile if first
-        else QgsVectorFileWriter.CreateOrOverwriteLayer
+        getattr(_action, "CreateOrOverwriteFile") if first
+        else getattr(_action, "CreateOrOverwriteLayer")
     )
     try:
         result = QgsVectorFileWriter.writeAsVectorFormatV3(
@@ -574,7 +575,8 @@ def write_layer_to_gpkg(layer: QgsVectorLayer, gpkg_path: str, layer_name: str,
         code, message = result[0], result[1]
     except (TypeError, IndexError):
         return None
-    if code != QgsVectorFileWriter.NoError:
+    _no_error = getattr(getattr(QgsVectorFileWriter, "WriterError", QgsVectorFileWriter), "NoError")
+    if code != _no_error:
         return message or f"write error {code}"
     return None
 

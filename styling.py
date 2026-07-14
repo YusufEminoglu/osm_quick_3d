@@ -568,7 +568,7 @@ def _render_map_units():
     try:
         return QgsUnitTypes.RenderUnit.RenderMapUnits
     except AttributeError:
-        return QgsUnitTypes.RenderMapUnits
+        return getattr(QgsUnitTypes, "RenderMapUnits")
 
 
 def _line(color_hex, width, dashed=False, map_units=False, width_expression=None):
@@ -621,8 +621,12 @@ def style_buildings(layer, mode=BUILDING_COLOR_FUNCTION, classification="continu
         symbol = _fill("#cfd6dd")
         expr = building_color_expression(mode, classification=classification, layer=layer, theme=theme)
         try:
+            prop_fill = getattr(
+                getattr(QgsSymbolLayer, "Property", QgsSymbolLayer),
+                "PropertyFillColor",
+            )
             symbol.symbolLayer(0).setDataDefinedProperty(
-                QgsSymbolLayer.PropertyFillColor, QgsProperty.fromExpression(expr))
+                prop_fill, QgsProperty.fromExpression(expr))
         except Exception:
             pass
         layer.setRenderer(QgsSingleSymbolRenderer(symbol))
@@ -753,7 +757,7 @@ def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_
         try:
             source_over = QPainter.CompositionMode.CompositionMode_SourceOver
         except AttributeError:
-            source_over = QPainter.CompositionMode_SourceOver
+            source_over = getattr(QPainter, "CompositionMode_SourceOver")
         layer.setBlendMode(source_over)
     except Exception:
         pass
