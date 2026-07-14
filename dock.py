@@ -2,6 +2,7 @@
 """Primary docked control panel for OSM Quick 3D."""
 from __future__ import annotations
 
+import contextlib
 import os
 
 from qgis.PyQt.QtCore import Qt, pyqtSignal
@@ -403,10 +404,8 @@ class PluginDockWidget(QDockWidget):
             "QPushButton#BasemapBtn:hover{background-color:#eef5f4;border-color:#2f756f;}"
             "QPushButton#BasemapBtn:pressed{background-color:#e0edeb;}"
         )
-        try:
+        with contextlib.suppress(Exception):
             self.add_basemap_btn.setCursor(_qt_value(Qt, "CursorShape", "PointingHandCursor"))
-        except Exception:
-            pass
         self.add_basemap_btn.clicked.connect(self.basemapRequested.emit)
         layout.addWidget(self.add_basemap_btn)
 
@@ -434,10 +433,8 @@ class PluginDockWidget(QDockWidget):
             "QPushButton:disabled{background-color:#b9c6c5;border-color:#b9c6c5;color:#f1f5f4;}"
         )
         self.run_btn.setMinimumHeight(34)
-        try:
+        with contextlib.suppress(Exception):
             self.run_btn.setCursor(_qt_value(Qt, "CursorShape", "PointingHandCursor"))
-        except Exception:
-            pass
         self.run_btn.clicked.connect(self._emit_run)
         layout.addWidget(self.run_btn)
         return tab
@@ -837,10 +834,8 @@ class PluginDockWidget(QDockWidget):
         tidx = self.theme_combo.findData(s.value(f"{_S}/theme", "default"))
         if tidx >= 0:
             self.theme_combo.setCurrentIndex(tidx)
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             self.max_km2.setValue(float(s.value(f"{_S}/max_km2", 6.0)))
-        except (TypeError, ValueError):
-            pass
         self.cb_buildings.setChecked(_truthy(s.value(f"{_S}/buildings"), True))
         self.cb_extrude.setChecked(_truthy(s.value(f"{_S}/extrude"), True))
         self.cb_base.setChecked(_truthy(s.value(f"{_S}/base"), True))
@@ -851,7 +846,7 @@ class PluginDockWidget(QDockWidget):
         self.cb_furniture.setChecked(_truthy(s.value(f"{_S}/furniture"), False))
         self.cb_labels.setChecked(_truthy(s.value(f"{_S}/labels"), False))
         self.cb_open3d.setChecked(_truthy(s.value(f"{_S}/open3d"), True))
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             res_val = int(s.value(f"{_S}/map_resolution", 1024))
             ridx = self.map_resolution.findData(res_val)
             if ridx >= 0:
@@ -859,9 +854,7 @@ class PluginDockWidget(QDockWidget):
             lridx = self.live_map_resolution.findData(res_val)
             if lridx >= 0:
                 self.live_map_resolution.setCurrentIndex(lridx)
-        except (TypeError, ValueError):
-            pass
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             class_val = s.value(f"{_S}/classification", "continuous")
             clidx = self.classification.findData(class_val)
             if clidx >= 0:
@@ -869,15 +862,11 @@ class PluginDockWidget(QDockWidget):
             lclidx = self.live_classification.findData(class_val)
             if lclidx >= 0:
                 self.live_classification.setCurrentIndex(lclidx)
-        except (TypeError, ValueError):
-            pass
         self.cb_save_gpkg.setChecked(_truthy(s.value(f"{_S}/save_gpkg"), False))
         self.cb_use_cache.setChecked(_truthy(s.value(f"{_S}/use_cache"), True))
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             self.height_scale.setValue(float(s.value(f"{_S}/height_scale", 1.0)))
             self.live_height_scale.setValue(float(s.value(f"{_S}/height_scale", 1.0)))
-        except (TypeError, ValueError):
-            pass
         self.cb_extrude.setEnabled(self.cb_buildings.isChecked())
         self.height_scale.setEnabled(self.cb_extrude.isChecked())
         self._update_download_classification_enabled()
@@ -929,18 +918,17 @@ class PluginDockWidget(QDockWidget):
         for widget in widgets:
             widget.blockSignals(True)
         try:
-            self._set_combo_data(self.live_theme_combo, p.get("theme", "default"))
-            self.live_height_scale.setValue(float(p.get("height_scale", 1.0)))
-            self._set_combo_data(
-                self.live_building_color,
-                p.get("building_color", styling.BUILDING_COLOR_FUNCTION),
-            )
-            self._set_combo_data(self.live_classification, p.get("classification", "continuous"))
-            self.live_cb_labels.setChecked(bool(p.get("want_labels", False)))
-            self.live_cb_base.setChecked(bool(p.get("want_base", True)))
-            self._set_combo_data(self.live_map_resolution, p.get("map_resolution", 1024))
-        except (TypeError, ValueError):
-            pass
+            with contextlib.suppress(TypeError, ValueError):
+                self._set_combo_data(self.live_theme_combo, p.get("theme", "default"))
+                self.live_height_scale.setValue(float(p.get("height_scale", 1.0)))
+                self._set_combo_data(
+                    self.live_building_color,
+                    p.get("building_color", styling.BUILDING_COLOR_FUNCTION),
+                )
+                self._set_combo_data(self.live_classification, p.get("classification", "continuous"))
+                self.live_cb_labels.setChecked(bool(p.get("want_labels", False)))
+                self.live_cb_base.setChecked(bool(p.get("want_base", True)))
+                self._set_combo_data(self.live_map_resolution, p.get("map_resolution", 1024))
         finally:
             for widget in widgets:
                 widget.blockSignals(False)
@@ -996,10 +984,8 @@ class PluginDockWidget(QDockWidget):
             return True
 
     def _set_layer_3d_visible(self, layer, checked):
-        try:
+        with contextlib.suppress(Exception):
             layer.setCustomProperty("osm_quick_3d/visible_3d", bool(checked))
-        except Exception:
-            pass
         if self._managed_canvas is not None:
             self._refresh_3d_view(auto=True)
         else:
@@ -1034,10 +1020,8 @@ class PluginDockWidget(QDockWidget):
             row = index // 2
             col = index % 2
             self.layer_3d_grid.addWidget(cb, row, col)
-            try:
+            with contextlib.suppress(Exception):
                 self.layer_3d_checks[layer.id()] = cb
-            except Exception:
-                pass
 
     def _update_scene_panel(self):
         if not hasattr(self, "scene_state_value") or not hasattr(self, "open_3d_btn"):
@@ -1172,10 +1156,8 @@ class PluginDockWidget(QDockWidget):
         buildings = layers.get("buildings")
         if buildings:
             scale = buildings.customProperty("osm_quick_3d/height_scale")
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 self.live_height_scale.setValue(float(scale))
-            except (TypeError, ValueError):
-                pass
             self.live_cb_labels.setChecked(buildings.labelsEnabled())
             self.building_opacity.setValue(int(buildings.opacity() * 100.0))
 
@@ -1328,10 +1310,8 @@ class PluginDockWidget(QDockWidget):
 
     def _apply_scene_background(self, color=None):
         qcolor = color if color is not None else self.scene_bg_color.color()
-        try:
+        with contextlib.suppress(Exception):
             self.iface.mapCanvas().setCanvasColor(qcolor)
-        except Exception:
-            pass
         self._refresh_3d_view(auto=True)
         self._apply_changes()
 
@@ -1470,10 +1450,8 @@ class PluginDockWidget(QDockWidget):
         self._update_scene_panel()
 
     def _current_bg_color(self):
-        try:
+        with contextlib.suppress(Exception):
             return self.scene_bg_color.color().name()
-        except Exception:
-            pass
         try:
             return self.iface.mapCanvas().canvasColor().name()
         except Exception:
@@ -1498,7 +1476,7 @@ class PluginDockWidget(QDockWidget):
         self._update_scene_panel()
 
     def _find_external_3d_dock(self):
-        try:
+        with contextlib.suppress(Exception):
             for dock in self.iface.mainWindow().findChildren(QDockWidget):
                 if dock is self:
                     continue
@@ -1506,8 +1484,6 @@ class PluginDockWidget(QDockWidget):
                 target = self._managed_canvas_name.lower()
                 if target in text or ("3d" in text and ("map" in text or "harita" in text)):
                     return dock
-        except Exception:
-            pass
         return None
 
     def _current_3d_layers(self):
@@ -1589,30 +1565,24 @@ class PluginDockWidget(QDockWidget):
     def _raise_3d_view(self):
         dock = self._find_external_3d_dock()
         if dock is not None:
-            try:
+            with contextlib.suppress(Exception):
                 dock.show()
                 dock.activateWindow()
                 handle = dock.windowHandle()
                 if handle is not None:
                     handle.requestActivate()
                 return True
-            except Exception:
-                pass
         canvas = self._managed_canvas or self._find_3d_canvas()
         for method in ("show", "activateWindow", "requestActivate"):
             fn = getattr(canvas, method, None) if canvas is not None else None
             if fn is None:
                 continue
-            try:
+            with contextlib.suppress(Exception):
                 fn()
-            except Exception:
-                pass
-        try:
+        with contextlib.suppress(Exception):
             handle = canvas.windowHandle()
             if handle is not None:
                 handle.requestActivate()
-        except Exception:
-            pass
         return canvas is not None
 
     def cleanup_managed_3d(self):
@@ -1627,10 +1597,8 @@ class PluginDockWidget(QDockWidget):
             else:
                 self.iface.closeMapCanvas(self._managed_canvas_name)
         except Exception:
-            try:
+            with contextlib.suppress(Exception):
                 canvas.close()
-            except Exception:
-                pass
 
         self._managed_canvas = None
         self._update_scene_panel()

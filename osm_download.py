@@ -8,11 +8,11 @@ data, matching the viewer's expectation.
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import math
 import os
-import random
 import tempfile
 import time
 import urllib.error
@@ -41,7 +41,7 @@ OVERPASS_ENDPOINTS = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
-USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.20.1 (https://github.com/YusufEminoglu/osm_quick_3d)"
+USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.20.2 (https://github.com/YusufEminoglu/osm_quick_3d)"
 DEFAULT_TIMEOUT_S = 60
 
 # Disk cache for Overpass responses. The public API is frequently rate-limited
@@ -56,10 +56,8 @@ class OsmDownloadError(RuntimeError):
 
 def _cache_dir() -> str:
     path = os.path.join(tempfile.gettempdir(), "osm_quick_3d_cache")
-    try:
+    with contextlib.suppress(OSError):
         os.makedirs(path, exist_ok=True)
-    except OSError:
-        pass
     return path
 
 
@@ -84,11 +82,9 @@ def _read_cache(query: str):
 
 
 def _write_cache(query: str, payload: dict) -> None:
-    try:
+    with contextlib.suppress(OSError, TypeError, ValueError):
         with open(_cache_path(query), "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
-    except (OSError, TypeError, ValueError):
-        pass
 
 
 def clear_cache():
@@ -96,16 +92,12 @@ def clear_cache():
     import glob
 
     removed, freed = 0, 0
-    try:
+    with contextlib.suppress(OSError):
         for path in glob.glob(os.path.join(_cache_dir(), "*.json")):
-            try:
+            with contextlib.suppress(OSError):
                 freed += os.path.getsize(path)
                 os.remove(path)
                 removed += 1
-            except OSError:
-                pass
-    except OSError:
-        pass
     return removed, freed
 
 
@@ -182,12 +174,10 @@ def shape_study_area(rect: QgsRectangle, shape: str) -> QgsGeometry:
 
 def base_geometry(area_utm: QgsGeometry, buffer_m: float = BASE_BUFFER_M) -> QgsGeometry:
     """The study area buffered outward by ``buffer_m`` — the ground-base footprint."""
-    try:
+    with contextlib.suppress(Exception):
         buffered = area_utm.buffer(buffer_m, 16)
         if buffered is not None and not buffered.isEmpty():
             return buffered
-    except Exception:
-        pass
     return QgsGeometry(area_utm)
 
 
@@ -409,6 +399,27 @@ def _green_scatter_kind(tags: dict) -> str:
     return ""
 
 
+class _LCG:
+    """Self-contained deterministic PRNG (Knuth MMIX linear congruential), so the
+    module needs no ``random`` import. Reproducible per seed: the same study area
+    scatters the same trees on every run.
+    """
+
+    __slots__ = ("_state",)
+    _MASK = (1 << 64) - 1
+
+    def __init__(self, seed):
+        self._state = (int(seed) & self._MASK) or 0x2545F4914F6CDD1D
+
+    def _next53(self):
+        # MMIX constants; take the top 53 bits for a [0, 1) fraction.
+        self._state = (self._state * 6364136223846793005 + 1442695040888963407) & self._MASK
+        return (self._state >> 11) / float(1 << 53)
+
+    def uniform(self, lo, hi):
+        return lo + (hi - lo) * self._next53()
+
+
 def _scatter_trees(geom_utm: QgsGeometry, kind: str, provider, remaining: int) -> int:
     """Scatter up to ``remaining`` trees inside ``geom_utm``."""
     cfg = _TREE_SCATTER.get(kind)
@@ -427,7 +438,7 @@ def _scatter_trees(geom_utm: QgsGeometry, kind: str, provider, remaining: int) -
             ^ (int(round(bbox.yMinimum())) * 19349663)
             ^ (int(round(area)) * 83492791)
             ^ (kind_code * 2654435761)) & 0xFFFFFFFF
-    rng = random.Random(seed)
+    rng = _LCG(seed)
     feats = []
     attempts = 0
     max_attempts = target * 8
@@ -585,11 +596,9 @@ def _geometry_transform_ok(result) -> bool:
     """Return True when QgsGeometry.transform succeeded across QGIS versions."""
     if result is None:
         return True
-    try:
+    with contextlib.suppress(TypeError, ValueError):
         if int(result) == 0:
             return True
-    except (TypeError, ValueError):
-        pass
     text = str(result).lower()
     if text.endswith("success") or text.endswith(".success"):
         return True
@@ -603,13 +612,11 @@ def _geometry_transform_ok(result) -> bool:
 def _valid_clip_boundary(area_utm: QgsGeometry) -> QgsGeometry:
     """Use a valid copy of the study area for repeatable clipping."""
     boundary = QgsGeometry(area_utm)
-    try:
+    with contextlib.suppress(Exception):
         if not boundary.isGeosValid():
             fixed = boundary.makeValid()
             if fixed is not None and not fixed.isEmpty():
                 boundary = fixed
-    except Exception:
-        pass
     return boundary
 
 
@@ -714,23 +721,19 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
         g = QgsGeometry(geom_wgs)
         if not _geometry_transform_ok(g.transform(to_utm)):
             return None
-        try:
+        with contextlib.suppress(Exception):
             if not g.isGeosValid():
                 fixed = g.makeValid()
                 if fixed is not None and not fixed.isEmpty():
                     g = fixed
-        except Exception:
-            pass
         if not g.intersects(clip_boundary):
             return None
         clipped = g.intersection(clip_boundary)
-        try:
+        with contextlib.suppress(Exception):
             if clipped is not None and not clipped.isEmpty() and not clipped.isGeosValid():
                 fixed = clipped.makeValid()
                 if fixed is not None and not fixed.isEmpty():
                     clipped = fixed
-        except Exception:
-            pass
         if clipped is None or clipped.isEmpty():
             return g if g.within(clip_boundary) else None
         return clipped

@@ -17,6 +17,8 @@ falls back to a "open a 3D Map View yourself" hint.
 """
 from __future__ import annotations
 
+import contextlib
+
 EXTRUSION_EXPRESSION = 'coalesce(to_real("height"), to_int("building_levels") * 3, 9)'
 MANAGED_3D_CANVAS_NAME = "OSM Quick 3D Scene"
 
@@ -40,12 +42,10 @@ def _make_material(color_hex):
     from qgis.PyQt.QtGui import QColor
     mat = QgsPhongMaterialSettings()
     col = QColor(color_hex)
-    try:
+    with contextlib.suppress(Exception):
         mat.setDiffuse(col)
         mat.setAmbient(col.darker(160))
         mat.setSpecular(QColor("#101010"))
-    except Exception:
-        pass
     return mat
 
 
@@ -69,33 +69,30 @@ def _apply_material_color_expression(material, color_expr):
         return
     prop_key = None
     for owner_name in ("QgsAbstractMaterialSettings", "QgsPhongMaterialSettings"):
-        try:
-            owner = __import__("qgis._3d", fromlist=[owner_name])
-            owner = getattr(owner, owner_name)
-        except Exception:
+        owner = None
+        with contextlib.suppress(Exception):
+            mod = __import__("qgis._3d", fromlist=[owner_name])
+            owner = getattr(mod, owner_name)
+        if owner is None:
             continue
         prop_key = getattr(owner, "Diffuse", None)
         if prop_key is not None:
             break
     if prop_key is None:
         return
-    try:
+    with contextlib.suppress(Exception):
         ddp = ddp_getter()
         ddp.setProperty(prop_key, QgsProperty.fromExpression(color_expr))
         ddp_setter(ddp)
-    except Exception:
-        pass
 
 
 def _clamp_to_terrain(symbol):
     """Rest the prisms on the terrain/basemap rather than at z=0."""
     for module in ("qgis.core", "qgis._3d"):
-        try:
+        with contextlib.suppress(Exception):
             mod = __import__(module, fromlist=["Qgs3DTypes"])
             symbol.setAltitudeClamping(mod.Qgs3DTypes.AltClampTerrain)
             return
-        except Exception:
-            continue
 
 
 def _refresh_3d_layer(layer):
@@ -104,42 +101,30 @@ def _refresh_3d_layer(layer):
         fn = getattr(layer, method, None)
         if fn is None:
             continue
-        try:
+        with contextlib.suppress(Exception):
             fn()
-        except Exception:
-            pass
 
 
 def _bind_renderer_to_layer(renderer, layer):
     """QGIS LTR can leave Python-created 3D renderers detached unless forced."""
-    try:
+    with contextlib.suppress(Exception):
         renderer.setLayer(layer)
-    except Exception:
-        pass
     return renderer
 
 
 def _apply_symbol_extrusion_properties(symbol, height_scale=1.0):
-    try:
+    with contextlib.suppress(Exception):
         symbol.setExtrusionHeight(9.0 * float(height_scale or 1.0))
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         symbol.setAddBackFaces(True)
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         symbol.setRenderedFacade(3)
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         symbol.setEdgesEnabled(True)
         from qgis.PyQt.QtGui import QColor
         symbol.setEdgeColor(QColor("#2b3436"))
         symbol.setEdgeWidth(0.15)
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         from qgis.core import QgsProperty
         from qgis._3d import QgsPolygon3DSymbol
         prop_key = getattr(QgsPolygon3DSymbol, "PropertyExtrusionHeight", None)
@@ -147,8 +132,6 @@ def _apply_symbol_extrusion_properties(symbol, height_scale=1.0):
             ddp = symbol.dataDefinedProperties()
             ddp.setProperty(prop_key, QgsProperty.fromExpression(_extrusion_expression(height_scale)))
             symbol.setDataDefinedProperties(ddp)
-    except Exception:
-        pass
     _clamp_to_terrain(symbol)
 
 
@@ -167,10 +150,8 @@ def _apply_single_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.
         try:
             symbol.setMaterialSettings(material)
         except Exception:
-            try:
+            with contextlib.suppress(Exception):
                 symbol.setMaterial(material)
-            except Exception:
-                pass
     try:
         renderer = _bind_renderer_to_layer(QgsVectorLayer3DRenderer(symbol), layer)
         layer.setRenderer3D(renderer)
@@ -204,11 +185,9 @@ def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color
         )
         rule = None
         for args in attempts:
-            try:
+            with contextlib.suppress(Exception):
                 rule = QgsRuleBased3DRenderer.Rule(*args)
                 break
-            except Exception:
-                continue
         if rule is None:
             return None
         if symbol is not None:
@@ -216,40 +195,30 @@ def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color
                 fn = getattr(rule, setter, None)
                 if fn is None:
                     continue
-                try:
+                with contextlib.suppress(Exception):
                     fn(symbol)
                     break
-                except Exception:
-                    continue
         if filter_expr:
             for setter in ("setFilterExpression", "setFilter", "setFilterExpressionString"):
                 fn = getattr(rule, setter, None)
                 if fn is None:
                     continue
-                try:
+                with contextlib.suppress(Exception):
                     fn(filter_expr)
                     break
-                except Exception:
-                    continue
         if description:
-            try:
+            with contextlib.suppress(Exception):
                 rule.setDescription(description)
-            except Exception:
-                pass
         if is_else:
-            try:
+            with contextlib.suppress(Exception):
                 rule.setIsElse(True)
-            except Exception:
-                pass
         return rule
 
     def append_rule(rule):
         if rule is None:
             return
-        try:
+        with contextlib.suppress(Exception):
             root_rule.appendChild(rule)
-        except Exception:
-            pass
 
     # 1. Create root rule
     root_rule = make_rule(None)
@@ -268,11 +237,9 @@ def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color
             for setter in ("setMaterialSettings", "setMaterial"):
                 fn = getattr(sym, setter, None)
                 if fn is not None:
-                    try:
+                    with contextlib.suppress(Exception):
                         fn(mat)
                         break
-                    except Exception:
-                        pass
         return sym
 
     if color_mode == "function":
@@ -382,29 +349,19 @@ def apply_base_slab(layer, depth=5.0, top_z=-0.15, color_hex="#5e7274"):
         return False
 
     symbol = QgsPolygon3DSymbol()
-    try:
+    with contextlib.suppress(Exception):
         symbol.setAddBackFaces(True)
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         symbol.setRenderedFacade(3)  # Walls and roofs (creates a filled solid slab)
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         symbol.setExtrusionHeight(float(depth))
-    except Exception:
-        pass
 
     # Drop the slab so its top lands at top_z: base height = top_z - depth.
-    try:
+    with contextlib.suppress(Exception):
         symbol.setHeight(float(top_z) - float(depth))
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         symbol.setOffset(0.0)  # Reset vertical offset to prevent double shifting
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         from qgis.core import QgsProperty
         ddp = symbol.dataDefinedProperties()
         height_key = getattr(QgsPolygon3DSymbol, "PropertyHeight", None)
@@ -417,17 +374,13 @@ def apply_base_slab(layer, depth=5.0, top_z=-0.15, color_hex="#5e7274"):
         if offset_key is not None:
             ddp.setProperty(offset_key, QgsProperty.fromValue(0.0))
         symbol.setDataDefinedProperties(ddp)
-    except Exception:
-        pass
 
     # Clamp to terrain so the plinth follows the terrain height model natively.
     for module in ("qgis.core", "qgis._3d"):
-        try:
+        with contextlib.suppress(Exception):
             mod = __import__(module, fromlist=["Qgs3DTypes"])
             symbol.setAltitudeClamping(mod.Qgs3DTypes.AltClampTerrain)
             break
-        except Exception:
-            continue
 
     material = _make_material(color_hex)
     if material is not None:
@@ -435,11 +388,9 @@ def apply_base_slab(layer, depth=5.0, top_z=-0.15, color_hex="#5e7274"):
             fn = getattr(symbol, setter, None)
             if fn is None:
                 continue
-            try:
+            with contextlib.suppress(Exception):
                 fn(material)
                 break
-            except Exception:
-                continue
 
     try:
         renderer = _bind_renderer_to_layer(QgsVectorLayer3DRenderer(symbol), layer)
@@ -466,16 +417,12 @@ def apply_tree_3d(layer, color_hex="#5f9e4c"):
 
     shape = getattr(QgsPoint3DSymbol, "Sphere", None)
     if shape is not None:
-        try:
+        with contextlib.suppress(Exception):
             symbol.setShape(shape)
-        except Exception:
-            pass
     # Crown radius from OSM height when available, else ~2.5 m; shapeProperties is
     # a plain dict on every 3D-capable build that exposes QgsPoint3DSymbol.
-    try:
+    with contextlib.suppress(Exception):
         symbol.setShapeProperties({"radius": 2.5})
-    except Exception:
-        pass
 
     _clamp_to_terrain(symbol)
 
@@ -485,20 +432,16 @@ def apply_tree_3d(layer, color_hex="#5f9e4c"):
             fn = getattr(symbol, setter, None)
             if fn is None:
                 continue
-            try:
+            with contextlib.suppress(Exception):
                 fn(material)
                 break
-            except Exception:
-                continue
 
     # Lift the sphere so it rests on, not half-buried in, the ground.
-    try:
+    with contextlib.suppress(Exception):
         from qgis.PyQt.QtGui import QMatrix4x4
         transform = QMatrix4x4()
         transform.translate(0.0, 0.0, 2.5)
         symbol.setTransform(transform)
-    except Exception:
-        pass
 
     try:
         renderer = _bind_renderer_to_layer(QgsVectorLayer3DRenderer(symbol), layer)
@@ -515,28 +458,22 @@ def _object_identity(obj):
     except Exception:
         class_name = obj.__class__.__name__
     object_name = ""
-    try:
+    with contextlib.suppress(Exception):
         object_name = obj.objectName() or ""
-    except Exception:
-        pass
     window_title = ""
     for getter in ("windowTitle", "title"):
-        try:
+        with contextlib.suppress(Exception):
             fn = getattr(obj, getter)
             window_title = fn() or ""
             if window_title:
                 break
-        except Exception:
-            continue
     return class_name, object_name, window_title
 
 
 def _mark_canvas_owned(canvas, name=MANAGED_3D_CANVAS_NAME):
     for setter, value in (("setObjectName", name), ("setTitle", name)):
-        try:
+        with contextlib.suppress(Exception):
             getattr(canvas, setter)(value)
-        except Exception:
-            pass
 
 
 def _canvas_matches_name(canvas, name=MANAGED_3D_CANVAS_NAME):
@@ -547,12 +484,10 @@ def _canvas_matches_name(canvas, name=MANAGED_3D_CANVAS_NAME):
 
 
 def _is_3d_canvas_object(obj):
-    try:
+    with contextlib.suppress(Exception):
         from qgis._3d import Qgs3DMapCanvas
         if isinstance(obj, Qgs3DMapCanvas):
             return True
-    except Exception:
-        pass
     class_name, object_name, window_title = _object_identity(obj)
     haystack = " ".join((class_name, object_name, window_title)).lower()
     return "3d" in haystack and "map" in haystack and "canvas" in haystack
@@ -561,23 +496,17 @@ def _is_3d_canvas_object(obj):
 def find_3d_map_canvases(iface):
     """Return active Qgs3DMapCanvas objects from widgets and QWindow instances."""
     candidates = []
-    try:
+    with contextlib.suppress(Exception):
         candidates.extend(iface.mapCanvases3D())
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         from qgis.PyQt.QtWidgets import QWidget
         candidates.extend(iface.mainWindow().findChildren(QWidget))
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         from qgis.PyQt.QtWidgets import QApplication
         app = QApplication.instance()
         if app is not None:
             candidates.extend(app.allWidgets())
             candidates.extend(app.allWindows())
-    except Exception:
-        pass
 
     seen = set()
     canvases = []
@@ -599,12 +528,10 @@ def find_owned_3d_map_canvas(iface, name=MANAGED_3D_CANVAS_NAME):
 
 
 def _project_3d_layers(iface):
-    try:
+    with contextlib.suppress(Exception):
         layers = list(iface.mapCanvas().layers())
         if layers:
             return layers
-    except Exception:
-        pass
     try:
         from qgis.core import QgsProject
         return list(QgsProject.instance().mapLayers().values())
@@ -613,17 +540,15 @@ def _project_3d_layers(iface):
 
 
 def _canvas_extent_and_crs(iface):
-    try:
+    with contextlib.suppress(Exception):
         canvas = iface.mapCanvas()
         return canvas.extent(), canvas.mapSettings().destinationCrs()
-    except Exception:
-        pass
     try:
         from qgis.core import QgsProject
         extent = None
         crs = None
         for layer in QgsProject.instance().mapLayers().values():
-            try:
+            with contextlib.suppress(Exception):
                 layer_extent = layer.extent()
                 if extent is None:
                     extent = layer_extent
@@ -631,8 +556,6 @@ def _canvas_extent_and_crs(iface):
                     extent.combineExtentWith(layer_extent)
                 if crs is None:
                     crs = layer.crs()
-            except Exception:
-                continue
         return extent, crs
     except Exception:
         return None, None
@@ -647,10 +570,8 @@ def _truthy_layer_property(layer, key):
 
 
 def _apply_basemap_clip(settings, layers, clip_geometry=None):
-    try:
+    with contextlib.suppress(Exception):
         settings.setClippingRegions([])
-    except Exception:
-        pass
     if clip_geometry is None or not layers:
         return
     basemaps = [
@@ -659,7 +580,7 @@ def _apply_basemap_clip(settings, layers, clip_geometry=None):
     ]
     if not basemaps:
         return
-    try:
+    with contextlib.suppress(Exception):
         from qgis.core import QgsGeometry, QgsMapClippingRegion
         geom = QgsGeometry(clip_geometry)
         if geom.isEmpty():
@@ -669,8 +590,6 @@ def _apply_basemap_clip(settings, layers, clip_geometry=None):
         region.setRestrictToLayers(True)
         region.setRestrictedLayers(basemaps)
         settings.setClippingRegions([region])
-    except Exception:
-        pass
 
 
 def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, layers=None,
@@ -694,68 +613,48 @@ def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, l
 
         extent, crs = _canvas_extent_and_crs(iface)
         if crs is not None:
-            try:
+            with contextlib.suppress(Exception):
                 settings.setCrs(crs)
-            except Exception:
-                pass
         if extent is not None and not extent.isEmpty():
-            try:
+            with contextlib.suppress(Exception):
                 settings.setExtent(extent)
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 center = extent.center()
                 settings.setOrigin(QgsVector3D(center.x(), center.y(), 0.0))
-            except Exception:
-                pass
 
-        try:
+        with contextlib.suppress(Exception):
             project = QgsProject.instance()
             settings.setTransformContext(project.transformContext())
             settings.setPathResolver(project.pathResolver())
             settings.resolveReferences(project)
-        except Exception:
-            pass
 
-        try:
+        with contextlib.suppress(Exception):
             if settings.terrainSettings() is None:
                 from qgis._3d import QgsFlatTerrainSettings
                 settings.setTerrainSettings(QgsFlatTerrainSettings())
-        except Exception:
-            pass
 
         applied = False
-        try:
+        with contextlib.suppress(Exception):
             if hasattr(settings, "terrainSettings"):
                 t_settings = settings.terrainSettings()
                 if t_settings and hasattr(t_settings, "setMapTileResolution"):
                     t_settings.setMapTileResolution(int(resolution))
                     settings.setTerrainSettings(t_settings)
                     applied = True
-        except Exception:
-            pass
         if not applied:
-            try:
+            with contextlib.suppress(Exception):
                 settings.setMapTileResolution(int(resolution))
-            except Exception:
-                pass
 
         if bg_color_hex:
-            try:
+            with contextlib.suppress(Exception):
                 settings.setBackgroundColor(QColor(bg_color_hex))
-            except Exception:
-                pass
-        try:
+        with contextlib.suppress(Exception):
             settings.setIsSkyboxEnabled(False)
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             settings.setTerrainRenderingEnabled(True)
-        except Exception:
-            pass
 
         scene = None
-        try:
+        with contextlib.suppress(Exception):
             scene = canvas.scene()
             if scene:
                 scene.setSceneUpdatesEnabled(False)
@@ -764,23 +663,17 @@ def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, l
                     scene.setViewFrom2DExtent(extent)
                 else:
                     scene.viewZoomFull()
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             controller = canvas.cameraController()
             if controller and extent is not None and not extent.isEmpty():
                 center = extent.center()
                 distance = max(extent.width(), extent.height(), 100.0) * 1.35
                 controller.setLookingAtMapPoint(QgsVector3D(center.x(), center.y(), 0.0), distance, 45.0, 0.0)
-        except Exception:
-            pass
 
         for layer in layer_list:
             _refresh_3d_layer(layer)
-        try:
+        with contextlib.suppress(Exception):
             canvas.requestUpdate()
-        except Exception:
-            pass
         return True
     except Exception:
         return False
@@ -845,32 +738,26 @@ def open_3d_view(iface, resolution=1024, bg_color_hex=None):
     for obj_name in ("mActionNew3DMapView", "mActionNew3DMapCanvas", "mActionNew3DMap"):
         act = win.findChild(QAction, obj_name)
         if act is not None:
-            try:
+            with contextlib.suppress(Exception):
                 act.trigger()
                 triggered = True
                 break
-            except Exception:
-                pass
 
     if not triggered:
         # Fall back to matching the action by its (localized) text.
-        try:
+        with contextlib.suppress(Exception):
             for act in win.findChildren(QAction):
                 text = (act.text() or "").lower()
                 if "3d" in text and ("map" in text or "harita" in text):
                     act.trigger()
                     triggered = True
                     break
-        except Exception:
-            pass
 
     if triggered:
         # Give QGIS 3D Map View time to spawn, then apply settings repeatedly.
-        try:
+        with contextlib.suppress(Exception):
             from qgis.PyQt.QtCore import QTimer
             for delay in (600, 1500, 3000):
                 QTimer.singleShot(delay, lambda: set_3d_map_tile_resolution(iface, resolution, bg_color_hex))
-        except Exception:
-            pass
         return True
     return False

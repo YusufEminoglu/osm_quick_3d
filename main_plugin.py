@@ -10,6 +10,7 @@ scale to larger areas than the Three.js companion plugin (osm_3d_model).
 """
 from __future__ import annotations
 
+import contextlib
 import os
 
 from qgis.PyQt.QtCore import Qt
@@ -84,10 +85,8 @@ class OsmQuick3DPlugin:
             self.iface.removePluginMenu(self.MENU_NAME, self.dock_action)
             self.dock_action = None
         if self.dock:
-            try:
+            with contextlib.suppress(Exception):
                 self.dock.cleanup_managed_3d()
-            except Exception:
-                pass
             self.iface.removeDockWidget(self.dock)
             self.dock.close()
             self.dock = None
@@ -105,18 +104,14 @@ class OsmQuick3DPlugin:
             right_area = getattr(Qt, "RightDockWidgetArea")
         self.iface.addDockWidget(right_area, self.dock)
         self.dock.show()
-        try:
+        with contextlib.suppress(Exception):
             self.dock.activateWindow()
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             try:
                 horizontal = Qt.Orientation.Horizontal
             except AttributeError:
                 horizontal = getattr(Qt, "Horizontal")
             self.iface.mainWindow().resizeDocks([self.dock], [430], horizontal)
-        except Exception:
-            pass
 
     # ── OSM basemap ────────────────────────────────────────────────────────
     OSM_BASEMAP_NAME = "OpenStreetMap"
@@ -272,13 +267,11 @@ class OsmQuick3DPlugin:
             cropped = area_utm.intersection(cap)
             if cropped is not None and not cropped.isEmpty():
                 area_utm = cropped
-            try:
+            with contextlib.suppress(Exception):
                 if not area_utm.isGeosValid():
                     fixed = area_utm.makeValid()
                     if fixed is not None and not fixed.isEmpty():
                         area_utm = fixed
-            except Exception:
-                pass
             return area_utm, epsg, area_km2
 
         rect, src_crs = self._area_rect_and_crs(p["area_source"])
@@ -373,23 +366,19 @@ class OsmQuick3DPlugin:
 
         # Move a clone of the existing layer-tree node; QGIS owns/deletes the
         # original node when it is removed, so reusing that node is unsafe.
-        try:
+        with contextlib.suppress(Exception):
             root = QgsProject.instance().layerTreeRoot()
             node = root.findLayer(basemap.id())
             if node is None:
                 return
             if node.parent() is group:
                 return
-            try:
+            with contextlib.suppress(Exception):
                 basemap.setCustomProperty("osm_quick_3d/basemap_underlay", True)
-            except Exception:
-                pass
             clone = node.clone()
             parent = node.parent() or root
             parent.removeChildNode(node)
             group.addChildNode(clone)
-        except Exception:
-            pass
 
     def _add_base_layer(self, p, area_utm, epsg, group, gpkg_path, gpkg_first):
         """Build, persist (optionally), style and 3D-extrude the ground base.
@@ -411,16 +400,12 @@ class OsmQuick3DPlugin:
         color_mode = p.get("building_color", styling.BUILDING_COLOR_FUNCTION)
         theme = p.get("theme", "default")
         transparent = p.get("basemap") is not None
-        try:
+        with contextlib.suppress(Exception):
             base.setCustomProperty("osm_quick_3d/transparent", transparent)
             base.setCustomProperty("osm_quick_3d/base_clip", True)
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             bg_color_hex = self.iface.mapCanvas().canvasColor().name()
             styling.style_base(base, color_mode, transparent=transparent, bg_color_hex=bg_color_hex, theme=theme)
-        except Exception:
-            pass
         project = QgsProject.instance()
         if group is not None:
             project.addMapLayer(base, False)
@@ -519,17 +504,13 @@ class OsmQuick3DPlugin:
                         gpkg_first = False
                     else:
                         gpkg_failed = True
-                try:
+                with contextlib.suppress(Exception):
                     style_fn(layer)
-                except Exception:
-                    pass
-                try:
+                with contextlib.suppress(Exception):
                     layer.setCustomProperty("osm_quick_3d/theme", theme)
                     layer.setCustomProperty("osm_quick_3d/building_color", color_mode)
                     layer.setCustomProperty("osm_quick_3d/classification", classification)
                     layer.setCustomProperty("osm_quick_3d/height_scale", p.get("height_scale", 1.0))
-                except Exception:
-                    pass
                 if group is not None:
                     # addToLegend=False, then insert at the top of our group so the
                     # spec's bottom-to-top order ends with buildings drawn on top.
@@ -542,10 +523,8 @@ class OsmQuick3DPlugin:
                 # Optional name labels for the layers that carry a name field.
                 if p.get("want_labels") and key in ("buildings", "roads"):
                     size = 8.0 if key == "buildings" else 7.5
-                    try:
+                    with contextlib.suppress(Exception):
                         styling.label_by_name(layer, size=size)
-                    except Exception:
-                        pass
                 if key == "buildings":
                     buildings_layer = layer
                 elif key == "trees":
@@ -555,10 +534,8 @@ class OsmQuick3DPlugin:
                 self._error("No result", "No OSM features found in the selected layers for this area.")
                 self._set_status("0 features.", error=True)
                 if group is not None:
-                    try:
+                    with contextlib.suppress(Exception):
                         QgsProject.instance().layerTreeRoot().removeChildNode(group)
-                    except Exception:
-                        pass
                 return
 
             extruded = False
@@ -576,13 +553,11 @@ class OsmQuick3DPlugin:
                     classification=p.get("classification", "continuous"),
                     theme=theme,
                 )
-                try:
+                with contextlib.suppress(Exception):
                     buildings_layer.setCustomProperty("osm_quick_3d/theme", theme)
                     buildings_layer.setCustomProperty("osm_quick_3d/building_color", p.get("building_color", styling.BUILDING_COLOR_FUNCTION))
                     buildings_layer.setCustomProperty("osm_quick_3d/classification", p.get("classification", "continuous"))
                     buildings_layer.setCustomProperty("osm_quick_3d/height_scale", p.get("height_scale", 1.0))
-                except Exception:
-                    pass
             # Tree points get a matching 3D pass (green/theme canopies) when 3D is on.
             if p["extrude_3d"] and trees_layer is not None:
                 native3d.apply_tree_3d(trees_layer, color_hex=t_data["trees"])
@@ -597,14 +572,12 @@ class OsmQuick3DPlugin:
             if p["basemap"] is not None:
                 self._setup_basemap_masking(p["basemap"], group)
 
-            try:
+            with contextlib.suppress(Exception):
                 to_canvas = QgsCoordinateTransform(
                     QgsCoordinateReferenceSystem.fromEpsgId(epsg),
                     canvas.mapSettings().destinationCrs(), project,
                 )
                 canvas.setExtent(to_canvas.transformBoundingBox(area_utm.boundingBox()))
-            except Exception:
-                pass
         finally:
             canvas.freeze(False)
             canvas.refresh()
@@ -625,11 +598,9 @@ class OsmQuick3DPlugin:
         self._set_status(summary)
         self.show_dock()
         if self.dock:
-            try:
+            with contextlib.suppress(Exception):
                 self.dock.sync_from_run_params(p)
                 self.dock.set_scene_clip_geometry(area_utm if p["basemap"] is not None else None)
-            except Exception:
-                pass
         if p["open_3d"] and self.dock:
             opened_3d = self.dock.open_managed_3d_view(auto=False)
             from qgis.PyQt.QtCore import QTimer

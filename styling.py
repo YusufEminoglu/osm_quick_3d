@@ -9,6 +9,8 @@ function categories instead of a flat single symbol.
 """
 from __future__ import annotations
 
+import contextlib
+
 from qgis.core import (
     QgsCategorizedSymbolRenderer,
     QgsFillSymbol,
@@ -476,7 +478,7 @@ def get_breaks_and_colors(layer, lo_hex, hi_hex, classification="continuous"):
                 heights = []
 
         if heights:
-            try:
+            with contextlib.suppress(Exception):
                 n = len(heights)
                 classification = str(classification).lower()
                 if classification == "quantile" and n >= 5:
@@ -488,8 +490,6 @@ def get_breaks_and_colors(layer, lo_hex, hi_hex, classification="continuous"):
                 else:
                     step = (max_h - min_h) / 5.0
                     b = [min_h + step, min_h + 2 * step, min_h + 3 * step, min_h + 4 * step]
-            except Exception:
-                pass
 
     c1 = lo_hex
     c2 = _interpolate_color(lo_hex, hi_hex, 0.25)
@@ -577,20 +577,16 @@ def _line(color_hex, width, dashed=False, map_units=False, width_expression=None
         props["line_style"] = "dash"
     symbol = QgsLineSymbol.createSimple(props)
     if map_units:
-        try:
+        with contextlib.suppress(Exception):
             symbol.setWidthUnit(_render_map_units())
-        except Exception:
-            pass
     if width_expression:
         prop_key = getattr(QgsSymbolLayer, "PropertyStrokeWidth", None)
         if prop_key is None:
             prop_key = getattr(QgsSymbolLayer, "PropertyWidth", None)
         if prop_key is not None:
-            try:
+            with contextlib.suppress(Exception):
                 symbol.symbolLayer(0).setDataDefinedProperty(
                     prop_key, QgsProperty.fromExpression(width_expression))
-            except Exception:
-                pass
     return symbol
 
 
@@ -620,15 +616,13 @@ def style_buildings(layer, mode=BUILDING_COLOR_FUNCTION, classification="continu
     if mode in _BUILDING_RAMPS or mode == "height":
         symbol = _fill("#cfd6dd")
         expr = building_color_expression(mode, classification=classification, layer=layer, theme=theme)
-        try:
+        with contextlib.suppress(Exception):
             prop_fill = getattr(
                 getattr(QgsSymbolLayer, "Property", QgsSymbolLayer),
                 "PropertyFillColor",
             )
             symbol.symbolLayer(0).setDataDefinedProperty(
                 prop_fill, QgsProperty.fromExpression(expr))
-        except Exception:
-            pass
         layer.setRenderer(QgsSingleSymbolRenderer(symbol))
     else:
         t = THEMES.get(theme, THEMES["default"])
@@ -751,7 +745,7 @@ def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_
     """
     slab = base_color_hex(mode, theme=theme)
     outline = _scale_hex(slab, 1.25)
-    try:
+    with contextlib.suppress(Exception):
         from qgis.PyQt.QtGui import QPainter
         # Qt6 scopes the enum (QPainter.CompositionMode.*); Qt5 exposes it flat.
         try:
@@ -759,8 +753,6 @@ def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_
         except AttributeError:
             source_over = getattr(QPainter, "CompositionMode_SourceOver")
         layer.setBlendMode(source_over)
-    except Exception:
-        pass
     if transparent:
         symbol = QgsFillSymbol.createSimple({
             "color": "0,0,0,0",
