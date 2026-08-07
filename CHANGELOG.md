@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.20.4] - 2026-08-07
+
+- Add floating Save as PDF button to reference manual
+
 ## [0.20.3] - 2026-08-07
 
 - Add comprehensive academic reference manual
