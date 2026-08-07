@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.20.6] - 2026-08-07
+
+- Added online user manual link (https://yusufeminoglu.github.io/osm_quick_3d/) and GitHub repository star call-to-action.
+
 ## [0.20.5] - 2026-08-07
 
 - Expand reference manual 3x with theory, math, 7 DOI refs
