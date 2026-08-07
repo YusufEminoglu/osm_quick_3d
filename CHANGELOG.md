@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.20.3] - 2026-08-07
+
+- Add comprehensive academic reference manual
+
 ## [0.20.2] - 2026-07-14
 
 - **Fully "Validated" security scan**: every remaining Bandit finding is now resolved in code rather than suppressed by a config file, so the QGIS Hub Security & Quality Scan reports the plugin as **"Validated"** instead of **"Validated (configured)"**. Defensive `try/except: pass` / `: continue` blocks became `contextlib.suppress(...)`, the seeded tree-scatter randomiser became a small self-contained generator (no `random` import), and the `.bandit` config file was removed. **No functional change** — every feature, default and output is identical; this is purely a security/quality hardening pass.
