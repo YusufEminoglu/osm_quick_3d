@@ -31,6 +31,7 @@ th,td{border:1px solid var(--border);padding:8px 12px;text-align:left}
 th{background:var(--code-bg);font-weight:600}
 .refs{font-size:12px;color:var(--muted)}
 .refs a{color:var(--link)}
+.formula{background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:10px 16px;margin:8px 0;font-family:Cambria,'Times New Roman',serif;font-size:15px;text-align:center}
 @media(max-width:760px){body{flex-direction:column}#sidebar{width:100%;min-width:auto;height:auto;position:static;border-right:none;border-bottom:1px solid var(--border)}#main{padding:24px}}
 .hidden{display:none}
 </style>
@@ -40,66 +41,195 @@ th{background:var(--code-bg);font-weight:600}
   <input type="text" id="search" placeholder="Search manual&hellip;" autocomplete="off">
   <h2>Contents</h2>
   <nav id="toc">
-    <a href="#overview">Overview</a>
-    <a href="#features" class="sub">Features</a>
-    <a href="#params" class="sub">Parameters</a>
-    <a href="#workflow" class="sub">Workflow</a>
-    <a href="#technical" class="sub">Technical Notes</a>
-    <a href="#literature">Literature</a>
+    <a href="#overview">1. Overview</a>
+    <a href="#theory" class="sub">2. Theoretical Foundations</a>
+    <a href="#area" class="sub">3. Study Area Definition</a>
+    <a href="#download" class="sub">4. OSM Data Download</a>
+    <a href="#layers" class="sub">5. Data Layers</a>
+    <a href="#heights" class="sub">6. Building Height Logic</a>
+    <a href="#colors" class="sub">7. Building Colour Modes</a>
+    <a href="#themes" class="sub">8. Map Themes (12)</a>
+    <a href="#extrusion" class="sub">9. 3D Extrusion System</a>
+    <a href="#trees" class="sub">10. Tree Scattering</a>
+    <a href="#styling" class="sub">11. Expression-Based Styling</a>
+    <a href="#live" class="sub">12. Theme &amp; Style Tab</a>
+    <a href="#cache" class="sub">13. Caching System</a>
+    <a href="#params" class="sub">14. Parameters</a>
+    <a href="#workflow" class="sub">15. Workflow</a>
+    <a href="#technical" class="sub">16. Technical Notes</a>
+    <a href="#literature" class="sub">17. Literature</a>
   </nav>
 </aside>
 <main id="main">
 <h1>OSM Quick 3D</h1>
-<p>OSM to native QGIS 2D/3D styled layers with flat-roof building massing &bull; v0.20.2</p>
+<p>OSM to native QGIS 2D/3D styled layers with flat-roof building massing &bull; v0.20.4</p>
 
 <h2 id="overview">1. Overview</h2>
-<p>OSM Quick 3D downloads OpenStreetMap data for a user-defined study area and produces native QGIS vector layers styled by function, with optional 3D building extrusion through QGIS's own 3D symbology engine. Unlike its sibling plugin <em>osm_3d_model</em> (which opens a browser-based Three.js viewer), OSM Quick 3D keeps everything inside QGIS as editable vector layers&mdash;suited for larger areas, analysis, printing, and manual editing. The plugin is a dock-based, two-tab control panel with a Build tab for data acquisition and a Theme &amp; Style tab for live retuning of existing results.</p>
+<p>OSM Quick 3D downloads OpenStreetMap data for a user-defined study area and produces native QGIS vector layers styled by function, with optional 3D building extrusion through QGIS's own 3D symbology engine. Unlike its sibling plugin <em>osm_3d_model</em> (which opens a browser-based Three.js viewer), OSM Quick 3D keeps everything inside QGIS as editable vector layers&mdash;suited for larger areas, analysis, printing, and manual editing. The plugin provides a dock-based, two-tab control panel with a Build tab for data acquisition and a Theme &amp; Style tab for live retuning.</p>
 
-<h2 id="features">2. Feature Documentation</h2>
+<h2 id="theory">2. Theoretical Foundations</h2>
 
-<h3>2.1 Study Area Definition</h3>
+<h3>2.1 OpenStreetMap as Urban Data Infrastructure</h3>
+<p>Haklay and Weber (2008) established OSM as a viable volunteered geographic information (VGI) platform, demonstrating that user-generated street maps can match or exceed the completeness of authoritative datasets in well-mapped urban areas. Fan et al. (2014) specifically validated OSM building footprint quality, finding that in German urban areas, OSM building data achieved &gt;80% completeness with positional accuracy comparable to cadastral surveys. The plugin leverages this by treating OSM as the primary data source for rapid urban morphology assessment, with the Overpass API serving as a query interface.</p>
+
+<h3>2.2 Level of Detail in 3D City Models</h3>
+<p>Kolbe (2009) formalised the CityGML LOD (Level of Detail) hierarchy for 3D city models: LOD1 comprises prismatic building blocks with flat roofs derived from footprints and height attributes, LOD2 adds roof structures, and LOD3 adds architectural details. OSM Quick 3D produces LOD1 models: flat-roofed extrusions from OSM building footprints with heights derived from OSM tags or typology-based defaults. Biljecki et al. (2017) demonstrated that LOD1 models generated from OSM without elevation data can achieve high accuracy when building height attributes are present, supporting the plugin's three-tier height fallback strategy.</p>
+
+<h2 id="area">3. Study Area Definition</h2>
 <div class="card">
   <h4>Boundary Sources and Shapes</h4>
-  <p>Two area sources: <strong>Visible map extent</strong> (canvas) or <strong>Selected features</strong> (active layer). Five boundary shapes: <strong>Rectangle</strong>, <strong>Rounded rectangle</strong> (corners at ~18% of short side), <strong>Circle</strong> (inscribed), <strong>Hexagon</strong> (pointy-top, inscribed), and <strong>Polygon</strong> (user-selected feature, dissolved if multiple). The area is auto-projected to its local UTM zone and clamped to a configurable maximum in square kilometres (default 6 km<sup>2</sup>).</p>
+  <p>Two area sources: <strong>Visible map extent</strong> (canvas) or <strong>Selected features</strong> (active layer, dissolved via <code>unaryUnion()</code>). Five boundary shapes: <strong>Rectangle</strong> (raw bounding box), <strong>Rounded rectangle</strong> (corners at ~18% of short side via double-buffer technique: <code>buffer(-corner, 12)</code> then <code>buffer(+corner, 12)</code>), <strong>Circle</strong> (inscribed, radius = min(width, height) / 2, 64 segments), <strong>Hexagon</strong> (pointy-top orientation, 6 points at 60&deg; intervals starting at &minus;30&deg;, inscribed), and <strong>Polygon</strong> (user-selected feature, dissolved if multiple).</p>
+  <p>The area is auto-projected to its local UTM zone via <code>utm_epsg_for()</code>: zone = \(\lfloor(\lambda + 180)/6\rfloor + 1\), clamped 1&ndash;60, EPSG = 32600 + zone (north) or 32700 + zone (south). Area is clamped to a configurable maximum in square kilometres (default 6 km<sup>2</sup>) by shrinking uniformly around the centroid.</p>
 </div>
 
-<h3>2.2 OSM Data Layers</h3>
+<h2 id="download">4. OSM Data Download</h2>
 <div class="card">
-  <h4>Eleven Layer Types</h4>
-  <p>The plugin creates these memory layers: OSM Buildings (MultiPolygon, with building type, height, levels, footprint, GFA), OSM Roads (MultiLineString, with highway class and metric width), OSM Bike lanes, OSM Greens (MultiPolygon: parks, forests, pitches, cemeteries, parking lots, pedestrian plazas), OSM Waterlines (MultiLineString), OSM Water areas (MultiPolygon), OSM Trees (Point, including procedurally scattered trees inside wooded polygons), OSM Bus stops, OSM Benches, OSM Street lights, and OSM Trash bins. All polygon/line layers use Multi* geometry types so boundary-clipped features are never silently dropped.</p>
+  <h4>Overpass API Pipeline with Multi-Mirror Fallback</h4>
+  <p>The plugin constructs a single Overpass QL query requesting all features within the WGS84 bounding box: ways and relations with <code>building</code>, <code>highway</code>, <code>waterway</code> (river/stream/canal/drain/ditch/riverbank), <code>leisure</code> (park/garden/playground/pitch/nature_reserve/common/dog_park/golf_course), <code>landuse</code> (forest/grass/meadow/recreation_ground/cemetery/reservoir/basin/village_green/orchard/vineyard/farmland/allotments/greenfield), <code>natural</code> (wood/scrub/water/grassland/heath), <code>amenity</code> (parking/marketplace), and <code>place=square</code>; plus nodes for trees, bus stops (also <code>public_transport=platform</code>), benches, street lamps, and waste baskets. The query uses <code>out body geom;</code> for full geometry, with a 60-second timeout.</p>
+  <p><strong>Multi-mirror fallback:</strong> Three endpoints are tried in order (<code>overpass-api.de</code>, <code>overpass.kumi.systems</code>, <code>overpass.private.coffee</code>) with a 10-second additional HTTP read timeout. HTTP 429 (rate-limited) triggers the next mirror. The first endpoint returning valid, non-empty JSON wins. Feedback messages distinguish first query from mirror fallback.</p>
 </div>
 
-<h3>2.3 Building Height Logic</h3>
+<h2 id="layers">5. Data Layers</h2>
 <div class="card">
-  <h4>Three-Tier Fallback</h4>
-  <p>Height is derived per-building from: (1) the OSM <code>height</code> tag, (2) <code>building:levels</code> multiplied by 3 m/floor plus optional <code>roof:levels</code>, or (3) a function-based default (apartments/residential=4, house=2, commercial=3, office=5, school=3, hospital=5, church=1). Each building also carries computed <code>footprint_m2</code> and <code>gfa_m2</code> columns.</p>
+  <h4>Twelve Layer Types</h4>
+  <p>The plugin creates 12 in-memory vector layers (all Multi* geometry for features potentially split by clipping):</p>
+  <table>
+    <tr><th>Layer</th><th>Geometry</th><th>Key Attributes</th></tr>
+    <tr><td>OSM Buildings</td><td>MultiPolygon</td><td>osm_id, building, building_levels, height, footprint_m2, gfa_m2, name</td></tr>
+    <tr><td>OSM Roads</td><td>MultiLineString</td><td>osm_id, highway, width, name</td></tr>
+    <tr><td>OSM Bike lanes</td><td>MultiLineString</td><td>osm_id, highway, width, name</td></tr>
+    <tr><td>OSM Greens</td><td>MultiPolygon</td><td>osm_id, leisure, landuse, natural, amenity, highway, place, name</td></tr>
+    <tr><td>OSM Waterlines</td><td>MultiLineString</td><td>osm_id, waterway, width, name</td></tr>
+    <tr><td>OSM Water areas</td><td>MultiPolygon</td><td>osm_id, natural, waterway, landuse, name</td></tr>
+    <tr><td>OSM Trees</td><td>Point</td><td>osm_id, natural, height</td></tr>
+    <tr><td>OSM Bus stops</td><td>Point</td><td>osm_id, highway, name</td></tr>
+    <tr><td>OSM Benches</td><td>Point</td><td>osm_id, amenity</td></tr>
+    <tr><td>OSM Street lights</td><td>Point</td><td>osm_id, highway</td></tr>
+    <tr><td>OSM Trash bins</td><td>Point</td><td>osm_id, amenity</td></tr>
+    <tr><td>OSM Base (optional)</td><td>Polygon</td><td>Ground plinth extruded from -2 m below terrain to -0.15 m</td></tr>
+  </table>
+  <p>Each layer is clipped against the valid study boundary (<code>geom.makeValid()</code> if needed, then <code>intersection(clip_boundary)</code>). Multipolygon assembly handles OSM relations with outer/inner ring roles for buildings with courtyards. Geometry classification follows a priority order: tree nodes &rarr; water areas &rarr; parking lots &rarr; paved squares &rarr; buildings &rarr; roads (with cycleway deduplication) &rarr; waterways &rarr; greens.</p>
 </div>
 
-<h3>2.4 Building Color Modes</h3>
+<h2 id="heights">6. Building Height Logic</h2>
 <div class="card">
-  <h4>Eight Colour Schemes</h4>
-  <p>Buildings can be coloured by: (1) OSM function (6 categories: residential, commercial, industrial, civic, worship, other), (2) Graduated by height (continuous ramp), (3) Soft tinted gray, (4) Soft tinted warm, (5) Soft teal, (6) Soft salmon, (7) Soft purple, (8) Soft sand. Ramp modes offer three height classification methods: continuous (10 equal-interval steps), discrete (5 classes), and quantile (5 classes at 20th/40th/60th/80th percentiles).</p>
+  <h4>Three-Tier Fallback with 57 Type-Specific Defaults</h4>
+  <p>Height is derived per-building by <code>_building_levels()</code>:</p>
+  <ol>
+    <li>Parse <code>building:levels</code> or <code>levels</code> tag, rounded to integer, clamped to &ge;1. Handles semicolons ("3;4") and unit suffixes ("m", "ft", etc.).</li>
+    <li>If no floor count: parse <code>height</code> tag in metres, divide by 3.0, round, clamp to &ge;1.</li>
+    <li>Function-based default from a 57-entry dictionary keyed by OSM building type: apartments=4, residential=4, detached=2, house=2, bungalow=1, office=5, commercial=3, school=3, university=4, hospital=5, church/mosque/temple/synagogue/chapel=1 (cathedral=2), warehouse=1, garage=1, shed=1, unknown=3.</li>
+    <li>Add <code>roof:levels</code> if present. Final: max(1, base + roof_levels).</li>
+  </ol>
+  <p>For the 3D extrusion expression: <code>coalesce(to_real("height"), to_int("building_levels") &times; 3, 9)</code>. The nine-metre default (3 floors at 3 m/floor) serves as the ultimate fallback when neither OSM height tag nor building:levels tag is present and the building type is unrecognised.</p>
 </div>
 
-<h3>2.5 Native QGIS 3D Extrusion</h3>
+<h2 id="colors">7. Building Colour Modes (8)</h2>
 <div class="card">
-  <h4>Rule-Based 3D Renderer</h4>
-  <p>Buildings use a <code>QgsRuleBased3DRenderer</code> with child rules per colour class, each with a <code>QgsPolygon3DSymbol</code> featuring data-defined extrusion height (from <code>height</code> or <code>building:levels</code>), Phong material, and edge rendering. The ground base is a recessed plinth extruded from -2 m below terrain up to -0.15 m. Trees use <code>QgsPoint3DSymbol</code> with Sphere shape. A managed 3D Map View provides camera position, terrain, and resolution controls.</p>
+  <h4>Function-Based and Height-Based Schemes</h4>
+  <table>
+    <tr><th>Mode</th><th>2D Renderer</th><th>Description</th></tr>
+    <tr><td>By function (OSM use)</td><td><code>QgsCategorizedSymbolRenderer</code></td><td>6 categories: residential, commercial, industrial, civic, worship, other. Static palette per theme.</td></tr>
+    <tr><td>Graduated by height</td><td>Data-defined fill colour</td><td>3 classification methods: Continuous (10-step <code>color_rgb(scale_linear(...))</code>), Discrete (5 equal-interval classes), Quantile (5 classes at 20/40/60/80th percentiles).</td></tr>
+    <tr><td>Soft tinted gray</td><td>Data-defined fill</td><td>Ramp: #e8e9e8 &rarr; #6e746f</td></tr>
+    <tr><td>Soft tinted warm</td><td>Data-defined fill</td><td>Ramp: #ede2d4 &rarr; #8a7460</td></tr>
+    <tr><td>Soft teal</td><td>Data-defined fill</td><td>Ramp: #dbeae7 &rarr; #3c7c77</td></tr>
+    <tr><td>Soft salmon</td><td>Data-defined fill</td><td>Ramp: #f1ded7 &rarr; #b9776a</td></tr>
+    <tr><td>Soft purple</td><td>Data-defined fill</td><td>Ramp: #e4dded &rarr; #6f5c86</td></tr>
+    <tr><td>Soft sand</td><td>Data-defined fill</td><td>Ramp: #ece6d6 &rarr; #9a8a63</td></tr>
+  </table>
+  <p>The height expression reads actual layer values: <code>coalesce(to_real("height"), to_int("building_levels") &times; 3, 9.0)</code>. Break values and 5 interpolated colours are cached per layer ID for performance.</p>
 </div>
 
-<h3>2.6 Twelve Map Themes</h3>
+<h2 id="themes">8. Map Themes (12)</h2>
 <div class="card">
   <h4>Coordinated Colour Palettes</h4>
-  <p>Muted Planning (default), Tokyo Cyber (dark, neon), Editorial Paper (warm), Nordic Frost (cool minimal), Monochrome Noir (high-contrast grayscale), Civic Atlas (clean survey), Mediterranean Survey (warm sun/sea), Night Print (dark cartographic), Anime Cel (bright cartoon), Desert Dunes (warm arid), Pastel Candy (soft kawaii), and Vaporwave (neon retro). Theme changes are live: they update 2D canvas, recolour all layers, and refresh the 3D view without re-downloading.</p>
+  <table>
+    <tr><th>Theme</th><th>Background</th><th>Character</th></tr>
+    <tr><td>Muted Planning</td><td>#ffffff</td><td>Professional muted european tones; default</td></tr>
+    <tr><td>Tokyo Cyber</td><td>#0a0b10</td><td>Dark, neon purples/oranges/cyans on near-black</td></tr>
+    <tr><td>Editorial Paper</td><td>#fdfbf7</td><td>Warm ivory paper with sepia-brown accents</td></tr>
+    <tr><td>Nordic Frost</td><td>#f5f7fa</td><td>Cool minimal blues on clean white</td></tr>
+    <tr><td>Monochrome Noir</td><td>#1e1e1e</td><td>High-contrast grayscale from near-white to near-black</td></tr>
+    <tr><td>Civic Atlas</td><td>#f7f8f2</td><td>Clean survey tones: muted greens, blues, greys</td></tr>
+    <tr><td>Mediterranean Survey</td><td>#fbf4e6</td><td>Warm sun/sea palette: terracotta, olive, turquoise</td></tr>
+    <tr><td>Night Print</td><td>#11161a</td><td>Dark cartographic: gold roads, dark greens, light buildings</td></tr>
+    <tr><td>Anime Cel</td><td>#dff3ff</td><td>Bright cartoon pastels: candy pink, lime, sky blue</td></tr>
+    <tr><td>Desert Dunes</td><td>#f6e7c8</td><td>Warm arid: sand beige, rust orange, olive green</td></tr>
+    <tr><td>Pastel Candy</td><td>#fff5fb</td><td>Soft kawaii: lavender pinks, mint greens, baby blues</td></tr>
+    <tr><td>Vaporwave</td><td>#2a1a4a</td><td>Neon retro: deep purple base + hot pink/cyan/mint</td></tr>
+  </table>
+  <p>Each theme sets: background colour, 6 building function colours, building height ramp (low&rarr;high), major road colour (motorway/primary/secondary/tertiary), minor road colour (residential/service/foot/other), greens colour (park/forest/pitch/cemetery/water category), water colour, and tree colour. Theme changes are live: they update the canvas background, recolour all layers, and refresh the 3D view without re-downloading data.</p>
 </div>
 
-<h3>2.7 Live Theme &amp; Style Tab</h3>
+<h2 id="extrusion">9. Native QGIS 3D Extrusion</h2>
 <div class="card">
-  <h4>Post-Build Retuning</h4>
-  <p>The Theme &amp; Style tab operates on an existing OSM Quick 3D layer group. It provides: group selector, theme combo with preview swatches, background colour button, 3D view controls (Open/Refresh/Focus/Close), per-layer 3D visibility checkboxes, live building colour mode and classification controls, building opacity slider, surface palette colour buttons (roads, greens, water), tree canopy colour and size, and height exaggeration spinner (0.5x&ndash;5.0x).</p>
+  <h4>Rule-Based 3D Renderer with Phong Materials</h4>
+  <p>Building 3D extrusion uses <code>QgsRuleBased3DRenderer</code> with per-function or per-height-class child rules:</p>
+  <ul>
+    <li><strong>Function mode:</strong> 6 rules (residential, commercial, industrial, civic, worship, other ELSE) each filtering by OSM building tag via a SQL-like expression: <code>lower("building") IN ('apartments', 'residential', 'house', ...)</code>.</li>
+    <li><strong>Ramp modes:</strong> 10 continuous-height rules or 5 discrete/quantile rules, each filtering by <code>EXTRUSION_EXPRESSION</code> range.</li>
+    <li>Each rule has a <code>QgsPolygon3DSymbol</code> with: data-defined extrusion height (<code>QgsProperty.fromExpression(extrusion_expression &times; scale)</code>), back faces enabled, rendered facades = walls+roofs (value 3), edge rendering (colour #2b3436, width 0.15), altitude clamping to terrain.</li>
+    <li><code>QgsPhongMaterialSettings</code> with per-rule colour, plus data-defined diffuse colour for graduated modes.</li>
+  </ul>
+  <p><strong>Ground base plinth:</strong> <code>QgsPolygon3DSymbol</code> extruded from -2.0 m below terrain to -0.15 m (prevents Z-fighting with terrain mesh). Theme-harmonised colour. Data-defined properties for height, extrusion depth, and offset.</p>
+  <p><strong>Tree canopies:</strong> <code>QgsPoint3DSymbol</code> with Sphere shape (2.5 m radius). Transformed with <code>QMatrix4x4().translate(0, 0, 2.5)</code> so spheres rest on the surface. Phong material with theme tree colour.</p>
+  <p><strong>Managed 3D canvas:</strong> Reuses a named <code>Qgs3DMapCanvas</code> ("OSM Quick 3D Scene") via <code>iface.createNewMapCanvas3D()</code>. Flat terrain with configurable tile resolution. Camera: distance = max(width, height, 100) &times; 1.35, pitch = 45&deg;, zero bearing. Basemap clipping via <code>QgsMapClippingRegion</code> in <code>ClipPainterOnly</code> mode.</p>
 </div>
 
-<h2 id="params">3. Parameters and Controls</h2>
+<h2 id="trees">10. Tree Scattering Algorithm</h2>
+<div class="card">
+  <h4>Deterministic Procedural Tree Placement</h4>
+  <p>Procedural trees are placed inside wooded green polygons (forest, wood, park, garden, etc.) using a deterministic seeded RNG:</p>
+  <table>
+    <tr><th>Green Type</th><th>Spacing (m<sup>2</sup>/tree)</th><th>Height Range (m)</th></tr>
+    <tr><td>Forest / Wood</td><td>75</td><td>7&ndash;13</td></tr>
+    <tr><td>Orchard</td><td>110</td><td>4&ndash;7</td></tr>
+    <tr><td>Park</td><td>170</td><td>5&ndash;9</td></tr>
+    <tr><td>Garden</td><td>210</td><td>4&ndash;7</td></tr>
+    <tr><td>Nature Reserve</td><td>180</td><td>5&ndash;10</td></tr>
+    <tr><td>Village Green</td><td>220</td><td>4&ndash;8</td></tr>
+    <tr><td>Recreation Ground</td><td>230</td><td>4&ndash;8</td></tr>
+    <tr><td>Cemetery</td><td>260</td><td>5&ndash;9</td></tr>
+    <tr><td>Scrub</td><td>280</td><td>2.5&ndash;4.5</td></tr>
+    <tr><td>Allotments</td><td>320</td><td>3&ndash;5</td></tr>
+    <tr><td>Grass</td><td>400</td><td>3&ndash;6</td></tr>
+    <tr><td>Meadow</td><td>440</td><td>3&ndash;6</td></tr>
+  </table>
+  <p><strong>RNG:</strong> A Knuth MMIX linear congruential generator seeded from the polygon's bounding box coordinates, area, and green type code: seed = (bbox_minX &times; 73856093) XOR (bbox_minY &times; 19349663) XOR (area &times; 83492791) XOR (kind_code &times; 2654435761), masked to 32 bits. This ensures that re-running the same area produces identical tree placement every time.</p>
+  <p><strong>Global cap:</strong> 500 total trees; per-polygon cap: 130. Target per polygon: min(130, remaining_cap, floor(polygon_area / spacing)). Rejection sampling: random points within the bounding box, accepted if <code>geom_utm.contains(pt)</code>, up to 8&times; target attempts.</p>
+</div>
+
+<h2 id="styling">11. Expression-Based Styling</h2>
+<div class="card">
+  <h4>QGIS Expressions for Data-Driven Rendering</h4>
+  <p>The plugin uses QGIS expression strings extensively, avoiding per-feature Python loops:</p>
+  <ul>
+    <li><strong><code>BUILDING_CLASS_EXPR</code>:</strong> Maps 40+ OSM building tag values into 6 categories (residential, commercial, industrial, civic, worship, other) via nested <code>CASE WHEN ... THEN 'category' ... END</code>.</li>
+    <li><strong><code>ROAD_CLASS_EXPR</code>:</strong> Maps 18+ highway tag values into 8 hierarchy levels (major, primary, secondary, tertiary, residential, service, foot, other).</li>
+    <li><strong><code>ROAD_WIDTH_M_EXPR</code>:</strong> <code>coalesce(to_real("width"), CASE ...)</code> with defaults from 24 m (motorway) down to 2.5 m (footway).</li>
+    <li><strong><code>ROAD_RENDER_WIDTH_EXPR</code>:</strong> Clamps road width between 1.5 m and 30 m for rendering.</li>
+    <li><strong><code>GREEN_CLASS_EXPR</code>:</strong> Maps leisure/landuse/natural/amenity/highway/place tags into 8 green categories.</li>
+    <li><strong><code>building_color_expression()</code>:</strong> Returns either hex-literal CASE expressions (function/discrete modes) or <code>color_rgb(scale_linear(...))</code> expressions (continuous ramp).</li>
+    <li><strong><code>EXTRUSION_EXPRESSION</code>:</strong> <code>coalesce(to_real("height"), to_int("building_levels") &times; 3, 9)</code> multiplied by height exaggeration factor.</li>
+  </ul>
+  <p>All colour and width properties are applied as data-defined overrides (<code>QgsProperty.fromExpression()</code>) rather than fixed renderer values, enabling live retuning without rebuilding the renderer.</p>
+</div>
+
+<h2 id="live">12. Theme &amp; Style Tab</h2>
+<div class="card">
+  <h4>Post-Build Live Retuning</h4>
+  <p>The Theme &amp; Style tab operates on an existing OSM Quick 3D layer group. Controls: group selector, theme combo with preview swatches, six colour pickers (major roads, minor roads, greens, water, trees, scene background), building colour mode, classification method (continuous/discrete/quantile), height exaggeration (0.5&ndash;5.0x), building opacity (0&ndash;100%), tree canopy size, tree colour, 3D view controls (Open/Refresh/Focus/Close), per-layer 3D visibility checkboxes, scene resolution selector, and basemap clip region management.</p>
+  <p>The key design pattern: <code>_apply_changes()</code> freezes the canvas, applies all current state in one batch, unfreezes, and refreshes&mdash;avoiding intermediate redraws. The 3D view is refreshed via <code>_refresh_3d_view()</code> with delayed retry timers (600 ms, 1500 ms, 3000 ms). A scene info panel shows real-time stats: 3D canvas open/closed, visible layer count, basemap clip status, and resolution.</p>
+</div>
+
+<h2 id="cache">13. Caching System</h2>
+<div class="card">
+  <h4>SHA-256 Disk Cache with 7-Day TTL</h4>
+  <p>Responses are cached as JSON files in <code>%TEMP%/osm_quick_3d_cache/</code>. The cache key is SHA-256 of the full Overpass query string (truncated to 40 hex characters). TTL: 604800 seconds (7 days). On cache miss: fetch from Overpass, write back. On cache hit: validate payload structure; if corrupt, discard and re-fetch. A "Clear cache" button reports files removed and bytes freed. The "Use OSM cache" checkbox allows users to bypass the cache for fresh data.</p>
+</div>
+
+<h2 id="params">14. Parameters and Controls</h2>
 
 <h3>Build Tab</h3>
 <table>
@@ -107,44 +237,48 @@ th{background:var(--code-bg);font-weight:600}
   <tr><td>Area source</td><td>Combo</td><td>Canvas / Selection</td><td>Canvas</td></tr>
   <tr><td>Area shape</td><td>Combo</td><td>Rectangle / Rounded / Circle / Hexagon / Polygon</td><td>Rectangle</td></tr>
   <tr><td>Max area</td><td>QDoubleSpinBox</td><td>0.1 &ndash; 200 km<sup>2</sup></td><td>6 km<sup>2</sup></td></tr>
-  <tr><td>Layer checkboxes</td><td>QCheckBox</td><td>Buildings / Roads / Water / Greens / Trees / Furniture / Labels</td><td>all on</td></tr>
-  <tr><td>3D extrusion</td><td>QCheckBox</td><td>on / off</td><td>off</td></tr>
-  <tr><td>Height exaggeration</td><td>QDoubleSpinBox</td><td>0.5x &ndash; 5.0x</td><td>1.5x</td></tr>
+  <tr><td>Layer checkboxes</td><td>QCheckBox</td><td>Buildings / Roads / Water / Greens / Trees / Furniture / Labels</td><td>All on</td></tr>
+  <tr><td>3D extrusion</td><td>QCheckBox</td><td>On / Off</td><td>Off</td></tr>
+  <tr><td>Height exaggeration</td><td>QDoubleSpinBox</td><td>0.5&ndash;5.0x</td><td>1.5x</td></tr>
   <tr><td>Map theme</td><td>Combo</td><td>12 themes</td><td>Muted Planning</td></tr>
-  <tr><td>Building colours</td><td>Combo</td><td>8 colour modes</td><td>By function</td></tr>
+  <tr><td>Building colours</td><td>Combo</td><td>8 modes</td><td>By function</td></tr>
   <tr><td>Height classes</td><td>Combo</td><td>Continuous / Discrete / Quantile</td><td>Continuous</td></tr>
-  <tr><td>Ground base</td><td>QCheckBox</td><td>on / off</td><td>off</td></tr>
-  <tr><td>Save to GeoPackage</td><td>QCheckBox</td><td>on / off</td><td>off</td></tr>
+  <tr><td>Ground base</td><td>QCheckBox</td><td>On / Off</td><td>Off</td></tr>
+  <tr><td>Save to GeoPackage</td><td>QCheckBox</td><td>On / Off</td><td>Off</td></tr>
+  <tr><td>Use OSM cache</td><td>QCheckBox</td><td>On / Off</td><td>On</td></tr>
 </table>
 
-<h2 id="workflow">4. Workflow Guide</h2>
+<h2 id="workflow">15. Workflow Guide</h2>
 <ol>
   <li>Open the OSM Quick 3D dock from the toolbar icon.</li>
-  <li>On the <strong>Build</strong> tab, optionally click <em>Add OSM basemap</em> for a reference tile layer.</li>
-  <li>Set the area source (canvas or selection), shape, and max area limit.</li>
-  <li>Choose which layers to download (Buildings, Roads, Water, Greens, Trees, Street furniture).</li>
-  <li>Optionally enable 3D extrusion and set height exaggeration, theme, and building colour mode.</li>
-  <li>Click <em>Download &amp; build 3D</em>. The plugin fetches OSM data via Overpass API, processes geometries, applies 2D styling, and optionally builds 3D extrusion.</li>
+  <li>On the <strong>Build</strong> tab, optionally click <em>Add OSM basemap</em> for an XYZ reference tile layer (EPSG:3857).</li>
+  <li>Set area source, shape, and max area limit. The area is clamped to the configured maximum.</li>
+  <li>Choose which layers to download. Enable 3D extrusion, set theme and building colour mode as desired.</li>
+  <li>Click <em>Download &amp; build 3D</em>. The plugin fetches data via Overpass, processes geometries, applies 2D styling, and optionally builds 3D extrusion.</li>
   <li>Layers appear in a tree group named "OSM Quick 3D -- EPSG:xxxxx". A managed 3D Map View opens if enabled.</li>
-  <li>Switch to the <strong>Theme &amp; Style</strong> tab to live-retune colours, themes, building opacity, tree size, and per-layer 3D visibility without re-downloading.</li>
-  <li>Optionally export to GeoPackage for persistence across sessions.</li>
+  <li>Switch to the <strong>Theme &amp; Style</strong> tab for live retuning of colours, themes, building opacity, tree size, and per-layer 3D visibility without re-downloading data.</li>
+  <li>Optionally export to GeoPackage (with layer prefix) for persistence across sessions.</li>
 </ol>
 
-<h2 id="technical">5. Technical Notes</h2>
+<h2 id="technical">16. Technical Notes</h2>
 <ul>
-  <li><strong>Multi-mirror Overpass:</strong> Three endpoints tried in order with 60-second timeout. Responses cached as SHA-256-keyed JSON files in <code>%TEMP%/osm_quick_3d_cache/</code> with 7-day TTL.</li>
-  <li><strong>Tree scattering:</strong> Deterministic MMIX LCG seeded from bounding-box coordinates and polygon area; 500 total trees, 130 per polygon maximum. Scatter density varies by green type (forest: 75 m<sup>2</sup>/tree, grass: 400 m<sup>2</sup>/tree).</li>
-  <li><strong>Expression-based 2D/3D:</strong> All colours, road widths, extrusion heights, and per-building colours use QGIS expressions (<code>CASE</code>, <code>coalesce</code>, <code>scale_linear</code>, <code>color_rgb</code>) via <code>QgsProperty.fromExpression()</code>.</li>
-  <li><strong>QGIS 3.x/4.x compatibility:</strong> Extensive try/except fallback chains for scoped vs unscoped enum access, <code>QgsRuleBased3DRenderer.Rule</code> constructor signatures, and PyQt5/PyQt6 differences.</li>
+  <li><strong>Multi-mirror Overpass:</strong> Three endpoints tried in order with 60-second query timeout + 10-second HTTP timeout. Cache: SHA-256 keyed JSON in temp directory, 7-day TTL.</li>
+  <li><strong>Tree scattering:</strong> Deterministic Knuth MMIX LCG seeded from polygon footprint coordinates. 500 total cap, 130 per-polygon cap.</li>
+  <li><strong>Expression-based 2D/3D:</strong> All colours, road widths, extrusion heights use QGIS expressions (<code>CASE</code>, <code>coalesce</code>, <code>scale_linear</code>, <code>color_rgb</code>) via <code>QgsProperty.fromExpression()</code>.</li>
+  <li><strong>Cross-version compatibility:</strong> Extensive try/except fallback chains for scoped vs unscoped enum access, <code>QgsRuleBased3DRenderer.Rule</code> constructor signatures (4 variants tried), and PyQt5/PyQt6 differences.</li>
   <li><strong>No external dependencies:</strong> Pure qgis.core / qgis.gui / qgis.PyQt. No .ui files&mdash;all UI built programmatically in <code>dock.py</code>.</li>
+  <li><strong>Geometry clipping robustness:</strong> All geometries transformed to WGS84 for Overpass, reprojected to UTM for clipping. Invalid geometries pass through <code>makeValid()</code>. Features that fall entirely within the boundary after intersection failure are preserved.</li>
 </ul>
 
-<h2 id="literature">6. Literature</h2>
+<h2 id="literature">17. Literature</h2>
 <ol class="refs">
   <li>Haklay, M. &amp; Weber, P. (2008). OpenStreetMap: User-generated street maps. <em>IEEE Pervasive Computing</em>, 7(4), 12&ndash;18. <a href="https://doi.org/10.1109/MPRV.2008.80">DOI: 10.1109/MPRV.2008.80</a></li>
   <li>Biljecki, F., Ledoux, H., &amp; Stoter, J. (2017). Generating 3D city models without elevation data. <em>Computers, Environment and Urban Systems</em>, 64, 1&ndash;18. <a href="https://doi.org/10.1016/j.compenvurbsys.2017.01.001">DOI: 10.1016/j.compenvurbsys.2017.01.001</a></li>
   <li>Kolbe, T. H. (2009). Representing and exchanging 3D city models with CityGML. In J. Lee &amp; S. Zlatanova (Eds.), <em>3D Geo-Information Sciences</em> (pp. 15&ndash;31). Springer. <a href="https://doi.org/10.1007/978-3-540-87395-2_2">DOI: 10.1007/978-3-540-87395-2_2</a></li>
   <li>Fan, H., Zipf, A., Fu, Q., &amp; Neis, P. (2014). Quality assessment for building footprints data on OpenStreetMap. <em>International Journal of Geographical Information Science</em>, 28(4), 700&ndash;719. <a href="https://doi.org/10.1080/13658816.2013.867495">DOI: 10.1080/13658816.2013.867495</a></li>
+  <li>Goetz, M. (2013). Towards generating highly detailed 3D CityGML models from OpenStreetMap. <em>International Journal of Geographical Information Science</em>, 27(5), 845&ndash;865. <a href="https://doi.org/10.1080/13658816.2012.721552">DOI: 10.1080/13658816.2012.721552</a></li>
+  <li>Goodchild, M. F. (2007). Citizens as sensors: The world of volunteered geography. <em>GeoJournal</em>, 69(4), 211&ndash;221. <a href="https://doi.org/10.1007/s10708-007-9111-y">DOI: 10.1007/s10708-007-9111-y</a></li>
+  <li>Mooney, P. &amp; Minghini, M. (2017). A review of OpenStreetMap data. In G. Foody et al. (Eds.), <em>Mapping and the Citizen Sensor</em> (pp. 37&ndash;59). Ubiquity Press. <a href="https://doi.org/10.5334/bbf.c">DOI: 10.5334/bbf.c</a></li>
 </ol>
 </main>
 <script>
@@ -188,7 +322,7 @@ th{background:var(--code-bg);font-weight:600}
 @media print { #print-pdf-btn { display: none !important; } }
 @media (max-width: 768px) { #print-pdf-btn { bottom: 12px; right: 12px; padding: 8px 14px; font-size: 12px; } }
 </style>
-<button id="print-pdf-btn" onclick="window.print()" title="Save as PDF / Print">🖨️ Save as PDF</button>
+<button id="print-pdf-btn" onclick="window.print()" title="Save as PDF / Print">&#x1F5A8;&#xFE0F; Save as PDF</button>
 
 </body>
 </html>
