@@ -8,6 +8,7 @@
 
 [![Release](https://img.shields.io/github/v/release/YusufEminoglu/osm_quick_3d?color=4a7a76&label=release)](https://github.com/YusufEminoglu/osm_quick_3d/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Documentation](https://img.shields.io/badge/📖_Reference_Manual-13a0a0)](https://yusufeminoglu.github.io/osm_quick_3d/)
 [![QGIS](https://img.shields.io/badge/QGIS-3.x%20%2B%204.x-589632?logo=qgis&logoColor=white)](https://qgis.org)
 [![Data](https://img.shields.io/badge/data-%C2%A9%20OpenStreetMap-7ebc6f?logo=openstreetmap&logoColor=white)](https://www.openstreetmap.org/copyright)
 
