@@ -22,6 +22,11 @@ No browser, no web server, no external dependencies.
 
 ---
 
+## 📖 Documentation
+
+**[Comprehensive Academic Reference Manual](https://yusufeminoglu.github.io/osm_quick_3d/)** — complete documentation of every feature, parameter, and workflow. Hosted on GitHub Pages.
+
+
 ## ✨ Why OSM Quick 3D?
 
 | | |
