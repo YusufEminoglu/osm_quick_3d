@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OSM Quick 3D &mdash; Reference Manual</title>
+<style>
+:root {--bg:#fafaf8;--sidebar-bg:#f3f3f0;--text:#1a1a1a;--muted:#5a5a55;--accent:#2a6e5e;--border:#d8d5ce;--card-bg:#fff;--link:#1a6e5e;--code-bg:#edf4f2;--search-bg:#fff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;display:flex;min-height:100vh}
+#sidebar{width:270px;min-width:270px;background:var(--sidebar-bg);border-right:1px solid var(--border);padding:24px 20px;position:sticky;top:0;height:100vh;overflow-y:auto}
+#sidebar h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px}
+#search{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--search-bg);margin-bottom:20px}
+#sidebar nav a{display:block;padding:5px 0;font-size:13px;color:var(--link);text-decoration:none}
+#sidebar nav a:hover{text-decoration:underline}
+#sidebar nav a.sub{padding-left:14px;font-size:12px}
+#main{flex:1;padding:40px 48px;max-width:860px}
+h1{font-size:28px;font-weight:700;color:var(--accent);margin-bottom:4px}
+h1+p{color:var(--muted);margin-bottom:32px}
+h2{font-size:20px;font-weight:600;color:var(--accent);margin:36px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--border)}
+h3{font-size:16px;font-weight:600;color:var(--text);margin:20px 0 8px}
+p,li{font-size:14px;color:var(--text)}
+p{margin-bottom:10px}
+.card{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:14px}
+.card h4{font-size:14px;font-weight:600;color:var(--accent);margin-bottom:6px}
+ul{margin:4px 0 10px 20px}
+li{margin-bottom:3px}
+code{font-family:Consolas,'Courier New',monospace;background:var(--code-bg);padding:1px 6px;border-radius:3px;font-size:13px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+th,td{border:1px solid var(--border);padding:8px 12px;text-align:left}
+th{background:var(--code-bg);font-weight:600}
+.refs{font-size:12px;color:var(--muted)}
+.refs a{color:var(--link)}
+@media(max-width:760px){body{flex-direction:column}#sidebar{width:100%;min-width:auto;height:auto;position:static;border-right:none;border-bottom:1px solid var(--border)}#main{padding:24px}}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<aside id="sidebar">
+  <input type="text" id="search" placeholder="Search manual&hellip;" autocomplete="off">
+  <h2>Contents</h2>
+  <nav id="toc">
+    <a href="#overview">Overview</a>
+    <a href="#features" class="sub">Features</a>
+    <a href="#params" class="sub">Parameters</a>
+    <a href="#workflow" class="sub">Workflow</a>
+    <a href="#technical" class="sub">Technical Notes</a>
+    <a href="#literature">Literature</a>
+  </nav>
+</aside>
+<main id="main">
+<h1>OSM Quick 3D</h1>
+<p>OSM to native QGIS 2D/3D styled layers with flat-roof building massing &bull; v0.20.2</p>
+
+<h2 id="overview">1. Overview</h2>
+<p>OSM Quick 3D downloads OpenStreetMap data for a user-defined study area and produces native QGIS vector layers styled by function, with optional 3D building extrusion through QGIS's own 3D symbology engine. Unlike its sibling plugin <em>osm_3d_model</em> (which opens a browser-based Three.js viewer), OSM Quick 3D keeps everything inside QGIS as editable vector layers&mdash;suited for larger areas, analysis, printing, and manual editing. The plugin is a dock-based, two-tab control panel with a Build tab for data acquisition and a Theme &amp; Style tab for live retuning of existing results.</p>
+
+<h2 id="features">2. Feature Documentation</h2>
+
+<h3>2.1 Study Area Definition</h3>
+<div class="card">
+  <h4>Boundary Sources and Shapes</h4>
+  <p>Two area sources: <strong>Visible map extent</strong> (canvas) or <strong>Selected features</strong> (active layer). Five boundary shapes: <strong>Rectangle</strong>, <strong>Rounded rectangle</strong> (corners at ~18% of short side), <strong>Circle</strong> (inscribed), <strong>Hexagon</strong> (pointy-top, inscribed), and <strong>Polygon</strong> (user-selected feature, dissolved if multiple). The area is auto-projected to its local UTM zone and clamped to a configurable maximum in square kilometres (default 6 km<sup>2</sup>).</p>
+</div>
+
+<h3>2.2 OSM Data Layers</h3>
+<div class="card">
+  <h4>Eleven Layer Types</h4>
+  <p>The plugin creates these memory layers: OSM Buildings (MultiPolygon, with building type, height, levels, footprint, GFA), OSM Roads (MultiLineString, with highway class and metric width), OSM Bike lanes, OSM Greens (MultiPolygon: parks, forests, pitches, cemeteries, parking lots, pedestrian plazas), OSM Waterlines (MultiLineString), OSM Water areas (MultiPolygon), OSM Trees (Point, including procedurally scattered trees inside wooded polygons), OSM Bus stops, OSM Benches, OSM Street lights, and OSM Trash bins. All polygon/line layers use Multi* geometry types so boundary-clipped features are never silently dropped.</p>
+</div>
+
+<h3>2.3 Building Height Logic</h3>
+<div class="card">
+  <h4>Three-Tier Fallback</h4>
+  <p>Height is derived per-building from: (1) the OSM <code>height</code> tag, (2) <code>building:levels</code> multiplied by 3 m/floor plus optional <code>roof:levels</code>, or (3) a function-based default (apartments/residential=4, house=2, commercial=3, office=5, school=3, hospital=5, church=1). Each building also carries computed <code>footprint_m2</code> and <code>gfa_m2</code> columns.</p>
+</div>
+
+<h3>2.4 Building Color Modes</h3>
+<div class="card">
+  <h4>Eight Colour Schemes</h4>
+  <p>Buildings can be coloured by: (1) OSM function (6 categories: residential, commercial, industrial, civic, worship, other), (2) Graduated by height (continuous ramp), (3) Soft tinted gray, (4) Soft tinted warm, (5) Soft teal, (6) Soft salmon, (7) Soft purple, (8) Soft sand. Ramp modes offer three height classification methods: continuous (10 equal-interval steps), discrete (5 classes), and quantile (5 classes at 20th/40th/60th/80th percentiles).</p>
+</div>
+
+<h3>2.5 Native QGIS 3D Extrusion</h3>
+<div class="card">
+  <h4>Rule-Based 3D Renderer</h4>
+  <p>Buildings use a <code>QgsRuleBased3DRenderer</code> with child rules per colour class, each with a <code>QgsPolygon3DSymbol</code> featuring data-defined extrusion height (from <code>height</code> or <code>building:levels</code>), Phong material, and edge rendering. The ground base is a recessed plinth extruded from -2 m below terrain up to -0.15 m. Trees use <code>QgsPoint3DSymbol</code> with Sphere shape. A managed 3D Map View provides camera position, terrain, and resolution controls.</p>
+</div>
+
+<h3>2.6 Twelve Map Themes</h3>
+<div class="card">
+  <h4>Coordinated Colour Palettes</h4>
+  <p>Muted Planning (default), Tokyo Cyber (dark, neon), Editorial Paper (warm), Nordic Frost (cool minimal), Monochrome Noir (high-contrast grayscale), Civic Atlas (clean survey), Mediterranean Survey (warm sun/sea), Night Print (dark cartographic), Anime Cel (bright cartoon), Desert Dunes (warm arid), Pastel Candy (soft kawaii), and Vaporwave (neon retro). Theme changes are live: they update 2D canvas, recolour all layers, and refresh the 3D view without re-downloading.</p>
+</div>
+
+<h3>2.7 Live Theme &amp; Style Tab</h3>
+<div class="card">
+  <h4>Post-Build Retuning</h4>
+  <p>The Theme &amp; Style tab operates on an existing OSM Quick 3D layer group. It provides: group selector, theme combo with preview swatches, background colour button, 3D view controls (Open/Refresh/Focus/Close), per-layer 3D visibility checkboxes, live building colour mode and classification controls, building opacity slider, surface palette colour buttons (roads, greens, water), tree canopy colour and size, and height exaggeration spinner (0.5x&ndash;5.0x).</p>
+</div>
+
+<h2 id="params">3. Parameters and Controls</h2>
+
+<h3>Build Tab</h3>
+<table>
+  <tr><th>Control</th><th>Type</th><th>Range/Options</th><th>Default</th></tr>
+  <tr><td>Area source</td><td>Combo</td><td>Canvas / Selection</td><td>Canvas</td></tr>
+  <tr><td>Area shape</td><td>Combo</td><td>Rectangle / Rounded / Circle / Hexagon / Polygon</td><td>Rectangle</td></tr>
+  <tr><td>Max area</td><td>QDoubleSpinBox</td><td>0.1 &ndash; 200 km<sup>2</sup></td><td>6 km<sup>2</sup></td></tr>
+  <tr><td>Layer checkboxes</td><td>QCheckBox</td><td>Buildings / Roads / Water / Greens / Trees / Furniture / Labels</td><td>all on</td></tr>
+  <tr><td>3D extrusion</td><td>QCheckBox</td><td>on / off</td><td>off</td></tr>
+  <tr><td>Height exaggeration</td><td>QDoubleSpinBox</td><td>0.5x &ndash; 5.0x</td><td>1.5x</td></tr>
+  <tr><td>Map theme</td><td>Combo</td><td>12 themes</td><td>Muted Planning</td></tr>
+  <tr><td>Building colours</td><td>Combo</td><td>8 colour modes</td><td>By function</td></tr>
+  <tr><td>Height classes</td><td>Combo</td><td>Continuous / Discrete / Quantile</td><td>Continuous</td></tr>
+  <tr><td>Ground base</td><td>QCheckBox</td><td>on / off</td><td>off</td></tr>
+  <tr><td>Save to GeoPackage</td><td>QCheckBox</td><td>on / off</td><td>off</td></tr>
+</table>
+
+<h2 id="workflow">4. Workflow Guide</h2>
+<ol>
+  <li>Open the OSM Quick 3D dock from the toolbar icon.</li>
+  <li>On the <strong>Build</strong> tab, optionally click <em>Add OSM basemap</em> for a reference tile layer.</li>
+  <li>Set the area source (canvas or selection), shape, and max area limit.</li>
+  <li>Choose which layers to download (Buildings, Roads, Water, Greens, Trees, Street furniture).</li>
+  <li>Optionally enable 3D extrusion and set height exaggeration, theme, and building colour mode.</li>
+  <li>Click <em>Download &amp; build 3D</em>. The plugin fetches OSM data via Overpass API, processes geometries, applies 2D styling, and optionally builds 3D extrusion.</li>
+  <li>Layers appear in a tree group named "OSM Quick 3D -- EPSG:xxxxx". A managed 3D Map View opens if enabled.</li>
+  <li>Switch to the <strong>Theme &amp; Style</strong> tab to live-retune colours, themes, building opacity, tree size, and per-layer 3D visibility without re-downloading.</li>
+  <li>Optionally export to GeoPackage for persistence across sessions.</li>
+</ol>
+
+<h2 id="technical">5. Technical Notes</h2>
+<ul>
+  <li><strong>Multi-mirror Overpass:</strong> Three endpoints tried in order with 60-second timeout. Responses cached as SHA-256-keyed JSON files in <code>%TEMP%/osm_quick_3d_cache/</code> with 7-day TTL.</li>
+  <li><strong>Tree scattering:</strong> Deterministic MMIX LCG seeded from bounding-box coordinates and polygon area; 500 total trees, 130 per polygon maximum. Scatter density varies by green type (forest: 75 m<sup>2</sup>/tree, grass: 400 m<sup>2</sup>/tree).</li>
+  <li><strong>Expression-based 2D/3D:</strong> All colours, road widths, extrusion heights, and per-building colours use QGIS expressions (<code>CASE</code>, <code>coalesce</code>, <code>scale_linear</code>, <code>color_rgb</code>) via <code>QgsProperty.fromExpression()</code>.</li>
+  <li><strong>QGIS 3.x/4.x compatibility:</strong> Extensive try/except fallback chains for scoped vs unscoped enum access, <code>QgsRuleBased3DRenderer.Rule</code> constructor signatures, and PyQt5/PyQt6 differences.</li>
+  <li><strong>No external dependencies:</strong> Pure qgis.core / qgis.gui / qgis.PyQt. No .ui files&mdash;all UI built programmatically in <code>dock.py</code>.</li>
+</ul>
+
+<h2 id="literature">6. Literature</h2>
+<ol class="refs">
+  <li>Haklay, M. &amp; Weber, P. (2008). OpenStreetMap: User-generated street maps. <em>IEEE Pervasive Computing</em>, 7(4), 12&ndash;18. <a href="https://doi.org/10.1109/MPRV.2008.80">DOI: 10.1109/MPRV.2008.80</a></li>
+  <li>Biljecki, F., Ledoux, H., &amp; Stoter, J. (2017). Generating 3D city models without elevation data. <em>Computers, Environment and Urban Systems</em>, 64, 1&ndash;18. <a href="https://doi.org/10.1016/j.compenvurbsys.2017.01.001">DOI: 10.1016/j.compenvurbsys.2017.01.001</a></li>
+  <li>Kolbe, T. H. (2009). Representing and exchanging 3D city models with CityGML. In J. Lee &amp; S. Zlatanova (Eds.), <em>3D Geo-Information Sciences</em> (pp. 15&ndash;31). Springer. <a href="https://doi.org/10.1007/978-3-540-87395-2_2">DOI: 10.1007/978-3-540-87395-2_2</a></li>
+  <li>Fan, H., Zipf, A., Fu, Q., &amp; Neis, P. (2014). Quality assessment for building footprints data on OpenStreetMap. <em>International Journal of Geographical Information Science</em>, 28(4), 700&ndash;719. <a href="https://doi.org/10.1080/13658816.2013.867495">DOI: 10.1080/13658816.2013.867495</a></li>
+</ol>
+</main>
+<script>
+(function(){
+  var inp=document.getElementById('search');
+  var main=document.getElementById('main');
+  if(!inp||!main)return;
+  var all=main.querySelectorAll('h2,h3,p,li,td');
+  inp.addEventListener('input',function(){
+    var q=inp.value.trim().toLowerCase();
+    all.forEach(function(el){el.classList.remove('hidden');});
+    if(!q)return;
+    var sections=main.querySelectorAll('h2');
+    sections.forEach(function(h){
+      var next=h.nextElementSibling;
+      var keep=h.textContent.toLowerCase().indexOf(q)!==-1;
+      while(next && next.tagName!=='H2'){
+        if(next.textContent.toLowerCase().indexOf(q)!==-1)keep=true;
+        next=next.nextElementSibling;
+      }
+      if(!keep){
+        next=h.nextElementSibling;
+        while(next && next.tagName!=='H2'){next.classList.add('hidden');next=next.nextElementSibling;}
+        h.classList.add('hidden');
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
