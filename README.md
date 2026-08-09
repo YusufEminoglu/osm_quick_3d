@@ -123,6 +123,9 @@ set QGIS_PLUGINPATH=<clone parent dir>   →  restart QGIS
 | Dependencies | None — pure `qgis.core` / `qgis.gui` / `qgis.PyQt` |
 | License | [MIT](LICENSE) — data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) |
 
+The OSM data, tile service, and Overpass API notices are collected in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
 > **Note on area size:** the practical limit is the public **Overpass API**, not QGIS — big requests can be slow or hit element limits. The plugin clamps the requested area about its centre, and the disk cache spares the API on re-runs.
 
 ---
@@ -134,19 +137,6 @@ set QGIS_PLUGINPATH=<clone parent dir>   →  restart QGIS
 - Defensive throughout: missing 3D module, missing labeling API, failed GeoPackage writes — every path degrades gracefully with a clear message instead of a crash.
 
 ---
-
-## 🇹🇷 Türkçe Özet
-
-**OSM Quick 3D**, tek tıkla OpenStreetMap verisini **doğrudan QGIS'e** getirir — tarayıcı yok, web sunucusu yok:
-
-- **Çalışma alanı şekli seçilebilir:** dikdörtgen, yuvarlatılmış dikdörtgen, daire, altıgen veya **kendi seçtiğiniz poligon**; tüm veriler bu sınıra kırpılır.
-- **İşleve göre stillenmiş katmanlar:** binalar (konut/ticari/sanayi/kamu/ibadet), yollar (OSM sınıfına göre metrik genişlik), su, yeşil alanlar, otoparklar, meydanlar, ağaçlar — tek bir katman grubunda.
-- **Yerli QGIS 3D kütle modeli:** bina yükseklikleri OSM'den (`height` → kat sayısı × 3 → 9 m); 0.5×–5.0× yükseklik abartma; ağaçlara 3D tepe taçları; şehrin üzerinde durduğu **zemin kaidesi**.
-- **12 harita teması + 8 bina paleti** — 2D ve 3D'de birebir aynı renkler; dock panelinden indirmeden **canlı** ayarlanır.
-- **Planlama büyüklükleri hazır:** her binada `footprint_m2` (taban alanı) ve `gfa_m2` (tahmini toplam inşaat alanı) kolonları.
-- **GeoPackage kaydı** (proje yeniden açılınca katmanlar kaybolmaz) ve **1 haftalık Overpass disk önbelleği** (aynı alanda tekrar çalıştırma anında açılır).
-
-Kurulum: QGIS → *Eklentiler → Eklentileri Yönet ve Kur* → **OSM Quick 3D** aratın.
 
 ---
 

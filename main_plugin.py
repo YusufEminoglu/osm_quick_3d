@@ -152,6 +152,8 @@ class OsmQuick3DPlugin:
             )
             return
 
+        layer.setAttribution("© OpenStreetMap contributors")
+        layer.setAttributionUrl("https://www.openstreetmap.org/copyright")
         project.addMapLayer(layer, False)
         root.addLayer(layer)  # append = bottom of the tree, under other layers
         self._set_status("Added the OpenStreetMap basemap. © OpenStreetMap contributors.")

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.20.7] - 2026-08-09
+
+- Add a complete OpenStreetMap, tile-service and Overpass API third-party notice.
+- Record OpenStreetMap attribution metadata directly on the optional basemap layer.
+- Keep the README English-only and link the complete data-attribution guidance.
+
 ## [0.20.6] - 2026-08-07
 
 - Added online user manual link (https://yusufeminoglu.github.io/osm_quick_3d/) and GitHub repository star call-to-action.
