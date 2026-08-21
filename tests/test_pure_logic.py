@@ -52,6 +52,7 @@ class _StubModule(types.ModuleType):
 def _install_qgis_stubs():
     for name in ("qgis", "qgis.core", "qgis.gui", "qgis.PyQt",
                  "qgis.PyQt.QtCore", "qgis.PyQt.QtGui", "qgis.PyQt.QtWidgets",
+                 "qgis.PyQt.QtNetwork",
                  "qgis._3d"):
         sys.modules.setdefault(name, _StubModule(name))
     # QVariant needs concrete-looking type attributes for the field definitions.
@@ -180,6 +181,114 @@ def test_cache_roundtrip():
         pass
 
 
+def test_overpass_tiling_and_validation():
+    print("Overpass tiling + payload validation")
+    small = (41.0, 29.0, 41.02, 29.02)
+    check("small bbox stays one tile", len(osm.tile_bbox(*small)) == 1)
+    city = (40.90, 28.75, 41.15, 29.25)
+    tiles = osm.tile_bbox(*city)
+    check("large bbox is tiled", len(tiles) > 1)
+    check("tile count stays bounded", len(tiles) <= osm.MAX_TILES)
+    check("each tile respects request area", all(
+        osm.bbox_area_km2(*tile) <= osm.MAX_TILE_AREA_KM2 * 1.001
+        for tile in tiles
+    ))
+    check("tiles preserve outer bbox", (
+        min(tile[0] for tile in tiles) == city[0]
+        and min(tile[1] for tile in tiles) == city[1]
+        and max(tile[2] for tile in tiles) == city[2]
+        and max(tile[3] for tile in tiles) == city[3]
+    ))
+    try:
+        osm.tile_bbox(30.0, 20.0, 34.0, 24.0)
+        oversized_rejected = False
+    except osm.OsmDownloadError:
+        oversized_rejected = True
+    check("regional extract is rejected", oversized_rejected)
+    check("valid payload accepted", osm._validate_payload({"elements": []}) == {"elements": []})
+    try:
+        osm._validate_payload({"remark": "timed out", "elements": []})
+        remark_rejected = False
+    except osm.OsmDownloadError:
+        remark_rejected = True
+    check("Overpass remark is rejected", remark_rejected)
+    buildings_query = osm._overpass_query(*small, datasets=("buildings",))
+    check("selected dataset is queried", '["building"]' in buildings_query)
+    check("unselected roads are omitted", '["highway"]' not in buildings_query)
+
+
+def test_feature_batch():
+    print("provider feature batching")
+
+    class Provider:
+        def __init__(self):
+            self.calls = []
+
+        def addFeatures(self, features):
+            self.calls.append(list(features))
+
+    provider = Provider()
+    batch = osm._FeatureBatch(provider)
+    batch.addFeatures([1])
+    batch.addFeatures([2, 3])
+    check("writes are deferred", not provider.calls)
+    batch.flush()
+    check("one provider call", len(provider.calls) == 1)
+    check("features keep order", provider.calls[0] == [1, 2, 3])
+
+
+def test_overpass_retry_and_partial_merge():
+    print("Overpass retry + partial tile recovery")
+    original_fetch_one = osm._fetch_one
+    original_tile_bbox = osm.tile_bbox
+    original_fetch_query = osm._fetch_query
+    original_read_cache = osm._read_cache
+    original_sleep = osm.time.sleep
+    try:
+        attempts = []
+
+        def transient_then_success(endpoint, query, timeout):
+            attempts.append(endpoint)
+            if len(attempts) == 1:
+                return None, "temporary network error", True
+            return {"elements": [{"type": "node", "id": 1}]}, "", False
+
+        osm._fetch_one = transient_then_success
+        osm.time.sleep = lambda _seconds: None
+        payload = osm._fetch_query("retry-test", 5, None, False)
+        check("transient failure retries same mirror", len(attempts) == 2)
+        check("retry returns payload", payload["elements"][0]["id"] == 1)
+
+        osm.tile_bbox = lambda *_args, **_kwargs: (
+            (41.0, 29.0, 41.01, 29.01),
+            (41.01, 29.0, 41.02, 29.01),
+        )
+        calls = []
+
+        def one_tile_fails(query, timeout, feedback, use_cache):
+            calls.append(query)
+            if len(calls) == 2:
+                raise osm.OsmDownloadError("mirror unavailable")
+            return {"elements": [
+                {"type": "way", "id": 7},
+                {"type": "way", "id": 7},
+            ]}
+
+        osm._fetch_query = one_tile_fails
+        osm._read_cache = lambda _query: {}
+        partial = osm.fetch_overpass(41.0, 29.0, 41.02, 29.01)
+        check("successful tile survives another tile failure",
+              partial["_download"]["tiles_succeeded"] == 1)
+        check("failed tile is reported", partial["_download"]["tiles_failed"] == (2,))
+        check("seam duplicates are removed", len(partial["elements"]) == 1)
+    finally:
+        osm._fetch_one = original_fetch_one
+        osm.tile_bbox = original_tile_bbox
+        osm._fetch_query = original_fetch_query
+        osm._read_cache = original_read_cache
+        osm.time.sleep = original_sleep
+
+
 def test_extrusion_expression():
     print("native3d._extrusion_expression")
     check("scale 1.0 is the bare expression",
@@ -280,7 +389,9 @@ def main():
     for test in (test_parse_osm_number, test_building_levels, test_utm_epsg,
                  test_waterway_width, test_building_color_expression,
                  test_road_width_and_themes, test_building_color_modes, test_extrusion_expression,
-                 test_cache_roundtrip, test_clear_cache,
+                 test_cache_roundtrip, test_overpass_tiling_and_validation,
+                 test_feature_batch, test_overpass_retry_and_partial_merge,
+                 test_clear_cache,
                  test_shape_and_base_constants, test_themes,
                  test_geometry_transform_result_helper,
                  test_new_features):

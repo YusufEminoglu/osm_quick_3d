@@ -455,9 +455,20 @@ class OsmQuick3DPlugin:
         self._set_status(f"Downloading… (~{area_km2:.1f} km², EPSG:{epsg})")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
+            datasets = tuple(
+                name for name, wanted in (
+                    ("buildings", p.get("want_buildings")),
+                    ("roads", p.get("want_roads")),
+                    ("water", p.get("want_water")),
+                    ("greens", p.get("want_greens")),
+                    ("trees", p.get("want_trees")),
+                    ("furniture", p.get("want_furniture")),
+                ) if wanted
+            )
             result = download_osm_for_area(
                 area_utm, epsg, feedback=self._set_status,
                 use_cache=p.get("use_cache", True),
+                datasets=datasets,
             )
         except OsmDownloadError as exc:
             self._error("OSM download error", str(exc))
@@ -596,8 +607,19 @@ class OsmQuick3DPlugin:
             )
         if gpkg_path is not None and not gpkg_failed:
             summary += f" GeoPackage: {gpkg_path}"
-        self.iface.messageBar().pushSuccess("OSM Quick 3D", summary)
-        self._set_status(summary)
+        download_info = result.get("download", {})
+        failed_tiles = tuple(download_info.get("tiles_failed") or ())
+        if failed_tiles:
+            summary += (
+                f" Warning: {len(failed_tiles)} of "
+                f"{download_info.get('tiles_total', '?')} OSM tiles failed "
+                f"({', '.join(map(str, failed_tiles))}); retry to fill the gap."
+            )
+            self.iface.messageBar().pushWarning("OSM Quick 3D", summary)
+            self._set_status(summary, error=True)
+        else:
+            self.iface.messageBar().pushSuccess("OSM Quick 3D", summary)
+            self._set_status(summary)
         self.show_dock()
         if self.dock:
             with contextlib.suppress(Exception):

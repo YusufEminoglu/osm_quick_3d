@@ -16,6 +16,12 @@ Draw nothing, configure nothing twice. Pick an area, press one button —
 **styled 2D layers + a flat-roof 3D massing model land straight in your QGIS project.**
 No browser, no web server, no external dependencies.
 
+Version 0.50 adds resilient city-scale acquisition: jobs up to 2,500 km2 are
+split into compact 100 km2 Overpass requests, cached independently, retried
+across three HTTPS mirrors and merged without seam duplicates. The downloader
+uses QGIS's own proxy and TLS configuration, and requests only the layer
+families selected in the Build dock.
+
 [Install](#-installation) · [What you get](#-what-you-get) · [Themes](#-12-map-themes) · [Live 3D dock](#-the-dock-build--tune-live) · [vs. osm_3d_model](#-which-one-do-i-want) · [Türkçe](#-türkçe-özet)
 
 </div>
@@ -60,6 +66,9 @@ OSM Quick 3D — EPSG:xxxxx           ← one tidy layer-tree group
 - An optional **basemap underlay** is moved beneath the city and **visually clipped to the plinth** (inverted-polygon mask), so the 3D view reads as a clean floating island, not a bleeding rectangle.
 - Optional **name labels** (white halo) for buildings and roads.
 - Boundary clipping uses Multi* geometry types, so split features survive on large areas.
+- Large jobs keep every successful tile in the one-week cache. If a public
+  mirror loses one tile, the partial result is reported and a retry resumes
+  from cached work instead of starting over.
 
 ---
 

@@ -15,12 +15,12 @@ import math
 import os
 import tempfile
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 
-from qgis.PyQt.QtCore import QVariant
+from qgis.PyQt.QtCore import QByteArray, QUrl, QUrlQuery, QVariant
+from qgis.PyQt.QtNetwork import QNetworkRequest
 from qgis.core import (
+    QgsBlockingNetworkRequest,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
     QgsFeature,
@@ -41,8 +41,17 @@ OVERPASS_ENDPOINTS = (
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
-USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.20.2 (https://github.com/YusufEminoglu/osm_quick_3d)"
+USER_AGENT = "OSM-Quick-3D-QGIS-Plugin/0.50.0 (https://github.com/YusufEminoglu/osm_quick_3d)"
 DEFAULT_TIMEOUT_S = 60
+MAX_TILE_AREA_KM2 = 100.0
+MAX_JOB_AREA_KM2 = 2500.0
+MAX_TILES = 40
+MAX_RESPONSE_BYTES = 64 * 1024 * 1024
+MAX_ELEMENTS_PER_TILE = 150_000
+MAX_TOTAL_ELEMENTS = 400_000
+TILE_PAUSE_S = 1.0
+MIRROR_RETRY_DELAY_S = 1.2
+_KM_PER_DEGREE = 111.32
 
 # Disk cache for Overpass responses. The public API is frequently rate-limited
 # (HTTP 429); caching the exact-query JSON means re-running on the same area (or
@@ -184,96 +193,251 @@ def base_geometry(area_utm: QgsGeometry, buffer_m: float = BASE_BUFFER_M) -> Qgs
 # --------------------------------------------------------------------------
 # Overpass query + fetch
 # --------------------------------------------------------------------------
-def _overpass_query(min_lat: float, min_lon: float, max_lat: float, max_lon: float) -> str:
+def _overpass_query(min_lat: float, min_lon: float, max_lat: float, max_lon: float,
+                    datasets=None) -> str:
     bbox = f"{min_lat},{min_lon},{max_lat},{max_lon}"
-    return f"""
-[out:json][timeout:{DEFAULT_TIMEOUT_S}];
-(
-  way["building"]({bbox});
-  relation["building"]({bbox});
-  way["highway"]({bbox});
-  way["waterway"~"river|stream|canal|drain|ditch|riverbank"]({bbox});
-  way["leisure"~"park|garden|playground|pitch|nature_reserve|common|dog_park|golf_course"]({bbox});
-  relation["leisure"~"park|garden|playground|pitch|nature_reserve|common|dog_park|golf_course"]({bbox});
-  way["landuse"~"forest|grass|meadow|recreation_ground|cemetery|reservoir|basin|village_green|orchard|vineyard|farmland|allotments|greenfield"]({bbox});
-  relation["landuse"~"forest|grass|meadow|recreation_ground|cemetery|reservoir|basin|village_green|orchard|vineyard|farmland|allotments|greenfield"]({bbox});
-  way["natural"~"wood|scrub|water|grassland|heath"]({bbox});
-  relation["natural"~"wood|scrub|water|grassland|heath"]({bbox});
-  way["amenity"~"parking|marketplace"]({bbox});
-  relation["amenity"~"parking|marketplace"]({bbox});
-  way["place"="square"]({bbox});
-  relation["place"="square"]({bbox});
-  node["natural"="tree"]({bbox});
-  node["highway"="bus_stop"]({bbox});
-  node["amenity"="bench"]({bbox});
-  node["highway"="street_lamp"]({bbox});
-  node["amenity"="waste_basket"]({bbox});
-);
-out body geom;
-""".strip()
-
-
-def _fetch_one(endpoint: str, query: str, timeout_s: int) -> dict:
-    parsed_endpoint = urllib.parse.urlparse(endpoint)
-    if parsed_endpoint.scheme not in {"https", "http"} or not parsed_endpoint.netloc:
-        raise OsmDownloadError(f"Invalid Overpass endpoint URL: {endpoint}")
-    data = urllib.parse.urlencode({"data": query}).encode("utf-8")
-    req = urllib.request.Request(
-        endpoint,
-        data=data,
-        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+    enabled = set(
+        ("buildings", "roads", "water", "greens", "trees", "furniture")
+        if datasets is None else datasets
     )
+    groups = {
+        "buildings": ('way["building"]', 'relation["building"]'),
+        "roads": ('way["highway"]',),
+        "water": (
+            'way["waterway"~"river|stream|canal|drain|ditch|riverbank"]',
+            'way["natural"="water"]', 'relation["natural"="water"]',
+            'way["landuse"~"reservoir|basin"]', 'relation["landuse"~"reservoir|basin"]',
+        ),
+        "greens": (
+            'way["leisure"~"park|garden|playground|pitch|nature_reserve|common|dog_park|golf_course"]',
+            'relation["leisure"~"park|garden|playground|pitch|nature_reserve|common|dog_park|golf_course"]',
+            'way["landuse"~"forest|grass|meadow|recreation_ground|cemetery|village_green|orchard|vineyard|farmland|allotments|greenfield"]',
+            'relation["landuse"~"forest|grass|meadow|recreation_ground|cemetery|village_green|orchard|vineyard|farmland|allotments|greenfield"]',
+            'way["natural"~"wood|scrub|grassland|heath"]',
+            'relation["natural"~"wood|scrub|grassland|heath"]',
+            'way["amenity"~"parking|marketplace"]', 'relation["amenity"~"parking|marketplace"]',
+            'way["place"="square"]', 'relation["place"="square"]',
+        ),
+        "trees": ('node["natural"="tree"]',),
+        "furniture": (
+            'node["highway"="bus_stop"]', 'node["amenity"="bench"]',
+            'node["highway"="street_lamp"]', 'node["amenity"="waste_basket"]',
+        ),
+    }
+    selectors = [f"  {selector}({bbox});"
+                 for name, rows in groups.items() if name in enabled
+                 for selector in rows]
+    if not selectors:
+        raise OsmDownloadError("Select at least one OSM dataset.")
+    return (f"[out:json][timeout:{DEFAULT_TIMEOUT_S}];\n(\n"
+            + "\n".join(selectors) + "\n);\nout body geom;")
+
+
+def bbox_area_km2(min_lat, min_lon, max_lat, max_lon) -> float:
+    """Conservative planar area estimate for a WGS84 bounding box."""
+    values = tuple(float(value) for value in (min_lat, min_lon, max_lat, max_lon))
+    south, west, north, east = values
+    if not all(math.isfinite(value) for value in values):
+        raise OsmDownloadError("The selected extent is not finite.")
+    if not (-90 <= south < north <= 90 and -180 <= west < east <= 180):
+        raise OsmDownloadError("The selected extent is outside WGS84 bounds.")
+    nearest_equator = 0.0 if south <= 0 <= north else min(abs(south), abs(north))
+    longitude_scale = max(0.01, math.cos(math.radians(nearest_equator)))
+    return ((north - south) * _KM_PER_DEGREE
+            * (east - west) * _KM_PER_DEGREE * longitude_scale)
+
+
+def tile_bbox(min_lat, min_lon, max_lat, max_lon,
+              max_tile_km2: float = MAX_TILE_AREA_KM2):
+    """Split a large WGS84 extent into compact, bounded Overpass requests."""
+    area = bbox_area_km2(min_lat, min_lon, max_lat, max_lon)
+    if area > MAX_JOB_AREA_KM2:
+        raise OsmDownloadError(
+            f"The selected extent is {area:,.0f} km2; the safe tiled limit is "
+            f"{MAX_JOB_AREA_KM2:,.0f} km2. Reduce Max area or download it in parts."
+        )
+    if area <= max_tile_km2:
+        return ((float(min_lat), float(min_lon), float(max_lat), float(max_lon)),)
+    south, west, north, east = map(float, (min_lat, min_lon, max_lat, max_lon))
+    nearest_equator = 0.0 if south <= 0 <= north else min(abs(south), abs(north))
+    longitude_scale = max(0.01, math.cos(math.radians(nearest_equator)))
+    height_km = (north - south) * _KM_PER_DEGREE
+    width_km = (east - west) * _KM_PER_DEGREE * longitude_scale
+    side_km = math.sqrt(max(1.0, float(max_tile_km2)))
+    rows = max(1, math.ceil(height_km / side_km))
+    columns = max(1, math.ceil(width_km / side_km))
+    if rows * columns > MAX_TILES:
+        raise OsmDownloadError(
+            f"The selected extent needs {rows * columns} OSM requests; the safe "
+            f"limit is {MAX_TILES}. Reduce Max area or download it in parts."
+        )
+    lat_step = (north - south) / rows
+    lon_step = (east - west) / columns
+    tiles = []
+    for row in range(rows):
+        tile_south = south + row * lat_step
+        tile_north = north if row == rows - 1 else tile_south + lat_step
+        for column in range(columns):
+            tile_west = west + column * lon_step
+            tile_east = east if column == columns - 1 else tile_west + lon_step
+            tiles.append((tile_south, tile_west, tile_north, tile_east))
+    return tuple(tiles)
+
+
+def _network_enum(group: str, name: str):
+    enum = getattr(QNetworkRequest, group, None)
+    return getattr(enum, name) if enum is not None else getattr(QNetworkRequest, name)
+
+
+def _validate_payload(payload: object) -> dict:
+    if not isinstance(payload, dict):
+        raise OsmDownloadError("The OSM server returned an invalid response.")
+    remark = str(payload.get("remark") or "").strip()
+    if remark:
+        raise OsmDownloadError(f"The OSM server could not complete the query: {remark[:240]}")
+    elements = payload.get("elements")
+    if not isinstance(elements, list):
+        raise OsmDownloadError("The OSM response has no elements list.")
+    if len(elements) > MAX_ELEMENTS_PER_TILE:
+        raise OsmDownloadError("The OSM tile returned too many objects; use a smaller Max area.")
+    return payload
+
+
+def _fetch_one(endpoint: str, query: str, timeout_s: int):
+    """Return (payload, detail, transient) using QGIS proxy/TLS settings."""
+    url = QUrl(endpoint)
+    if not url.isValid() or url.scheme() != "https" or not url.host():
+        return None, "invalid HTTPS endpoint", False
+    encoded = QUrlQuery()
+    encoded.addQueryItem("data", query)
+    body = QByteArray(
+        encoded.query(
+            QUrl.ComponentFormattingOption.FullyEncoded
+        ).encode("ascii")
+    )
+    request = QNetworkRequest(url)
+    if hasattr(request, "setTransferTimeout"):
+        request.setTransferTimeout((timeout_s + 10) * 1000)
+    request.setHeader(
+        _network_enum("KnownHeaders", "ContentTypeHeader"),
+        "application/x-www-form-urlencoded",
+    )
+    request.setRawHeader(b"Accept", b"application/json")
+    request.setRawHeader(b"User-Agent", USER_AGENT.encode("ascii"))
+    client = QgsBlockingNetworkRequest()
     try:
-        with urllib.request.urlopen(req, timeout=timeout_s + 10) as resp:  # nosec B310 - scheme validated above.
-            payload = resp.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as exc:
-        if exc.code == 429:
-            raise OsmDownloadError("rate-limited (HTTP 429)") from exc
-        raise OsmDownloadError(f"HTTP {exc.code}: {exc.reason}") from exc
+        code = client.post(request, body, False, None)
     except Exception as exc:
-        raise OsmDownloadError(f"fetch failed: {exc}") from exc
-
+        return None, str(exc).strip() or "network request exception", True
+    if code != QgsBlockingNetworkRequest.NoError:
+        detail = "network request failed"
+        error_message = getattr(client, "errorMessage", None)
+        if callable(error_message):
+            detail = str(error_message()).strip() or detail
+        return None, detail, True
+    reply = client.reply()
     try:
-        return json.loads(payload)
-    except json.JSONDecodeError as exc:
-        raise OsmDownloadError(f"non-JSON response ({len(payload)} bytes)") from exc
+        status = int(reply.attribute(_network_enum("Attribute", "HttpStatusCodeAttribute")))
+    except (TypeError, ValueError):
+        status = 0
+    if status and not 200 <= status < 300:
+        return None, f"HTTP {status}", status == 429 or 500 <= status < 600
+    content = bytes(reply.content())
+    if len(content) > MAX_RESPONSE_BYTES:
+        return None, "response exceeded 64 MB", False
+    try:
+        return _validate_payload(json.loads(content.decode("utf-8"))), "", False
+    except (UnicodeDecodeError, json.JSONDecodeError, OsmDownloadError) as exc:
+        return None, str(exc), False
 
 
-def fetch_overpass(min_lat: float, min_lon: float, max_lat: float, max_lon: float,
-                   timeout_s: int = DEFAULT_TIMEOUT_S, feedback=None,
-                   use_cache: bool = True) -> dict:
-    """Query Overpass, falling back across mirrors until one answers with JSON.
-
-    When ``use_cache`` is set, a fresh on-disk response for the exact same query
-    is returned without touching the network, and successful network responses
-    are written back to the cache.
-    """
-    query = _overpass_query(min_lat, min_lon, max_lat, max_lon)
+def _fetch_query(query: str, timeout_s: int, feedback, use_cache: bool) -> dict:
     if use_cache:
         cached = _read_cache(query)
         if cached is not None:
             if feedback:
-                feedback("Using cached OSM (no download) ...")
-            return cached
-    last_error = None
+                feedback("Using cached OSM tile (no download) ...")
+            return _validate_payload(cached)
+    failures = []
     for index, endpoint in enumerate(OVERPASS_ENDPOINTS):
         host = urllib.parse.urlparse(endpoint).netloc or endpoint
-        if feedback:
-            prefix = "Querying" if index == 0 else f"Mirror {index} —"
-            feedback(f"{prefix} {host} ...")
+        for attempt in range(2):
+            if feedback:
+                if attempt:
+                    feedback(f"{host} transient failure; retrying once ...")
+                else:
+                    prefix = "Querying" if index == 0 else "Trying mirror"
+                    feedback(f"{prefix} {host} ...")
+            if attempt:
+                time.sleep(MIRROR_RETRY_DELAY_S)
+            payload, detail, transient = _fetch_one(endpoint, query, timeout_s)
+            if payload is not None:
+                if use_cache:
+                    _write_cache(query, payload)
+                return payload
+            failures.append(f"{host}: {detail}")
+            if not (transient and attempt == 0):
+                break
+    raise OsmDownloadError("All pinned OSM mirrors failed. " + "; ".join(failures[-3:]))
+
+
+def fetch_overpass(min_lat: float, min_lon: float, max_lat: float, max_lon: float,
+                   timeout_s: int = DEFAULT_TIMEOUT_S, feedback=None,
+                   use_cache: bool = True, datasets=None) -> dict:
+    """Fetch one or more bounded tiles, cache them, and merge by OSM identity."""
+    tiles = tile_bbox(min_lat, min_lon, max_lat, max_lon)
+    queries = tuple(_overpass_query(*tile, datasets=datasets) for tile in tiles)
+    if feedback and len(queries) > 1:
+        feedback(f"Large area: downloading {len(queries)} safe OSM tiles in sequence ...")
+    payloads = []
+    failed_tiles = []
+    failure_details = []
+    for index, query in enumerate(queries):
+        if feedback and len(queries) > 1:
+            feedback(f"Downloading OSM tile {index + 1}/{len(queries)} ...")
         try:
-            payload = _fetch_one(endpoint, query, timeout_s)
-            if use_cache:
-                _write_cache(query, payload)
-            return payload
+            payloads.append(_fetch_query(query, timeout_s, feedback, use_cache))
         except OsmDownloadError as exc:
-            last_error = exc
-            if feedback and index + 1 < len(OVERPASS_ENDPOINTS):
-                feedback(f"{host} {exc}; trying next mirror...")
-    raise OsmDownloadError(
-        f"All Overpass endpoints failed (last: {last_error}). Wait a minute and retry, "
-        "or pick a smaller area."
-    )
+            if len(queries) == 1:
+                raise
+            failed_tiles.append(index + 1)
+            failure_details.append(str(exc))
+        if (index + 1 < len(queries)
+                and (not use_cache or _read_cache(queries[index + 1]) is None)):
+            time.sleep(TILE_PAUSE_S)
+    if not payloads:
+        raise OsmDownloadError(
+            f"All {len(queries)} OSM tiles failed. Check QGIS proxy/network settings "
+            "or retry shortly; successful retries are cached per tile. Last error: "
+            + (failure_details[-1] if failure_details else "no server answered")
+        )
+    merged = {}
+    for payload in payloads:
+        for element in payload["elements"]:
+            key = (str(element.get("type", "")), str(element.get("id", "")))
+            merged.setdefault(key, element)
+        if len(merged) > MAX_TOTAL_ELEMENTS:
+            raise OsmDownloadError(
+                f"The job returned more than {MAX_TOTAL_ELEMENTS:,} OSM objects. "
+                "Reduce Max area."
+            )
+    if feedback:
+        message = (
+            f"Merged {len(payloads)}/{len(queries)} tiles into "
+            f"{len(merged):,} OSM objects."
+        )
+        if failed_tiles:
+            missing = ", ".join(map(str, failed_tiles))
+            message += f" Missing tiles: {missing}. Retry to fill them from cache."
+        feedback(message)
+    return {
+        "elements": list(merged.values()),
+        "_download": {
+            "tiles_total": len(queries),
+            "tiles_succeeded": len(payloads),
+            "tiles_failed": tuple(failed_tiles),
+        },
+    }
 
 
 # --------------------------------------------------------------------------
@@ -535,6 +699,22 @@ def _make_layer(name: str, wkb_type: str, epsg_dest: int, fields_def):
     return layer, provider
 
 
+class _FeatureBatch:
+    """Collect provider writes and commit them in one C++ boundary crossing."""
+
+    def __init__(self, provider):
+        self.provider = provider
+        self.features = []
+
+    def addFeatures(self, features):
+        self.features.extend(features)
+
+    def flush(self):
+        if self.features:
+            self.provider.addFeatures(self.features)
+            self.features = []
+
+
 def build_base_layer(area_utm: QgsGeometry, epsg_dest: int,
                      buffer_m: float = BASE_BUFFER_M) -> QgsVectorLayer:
     """A one-feature ground-base layer (study area buffered by ``buffer_m``)."""
@@ -624,7 +804,7 @@ def _valid_clip_boundary(area_utm: QgsGeometry) -> QgsGeometry:
 # Main download + clip
 # --------------------------------------------------------------------------
 def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
-                          use_cache: bool = True) -> dict:
+                          use_cache: bool = True, datasets=None) -> dict:
     """Fetch OSM for the boundary's bbox, reproject to UTM, clip to the boundary.
 
     ``area_utm`` is the study-boundary polygon (circle, rounded rectangle,
@@ -641,9 +821,15 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
     min_lon, min_lat = wgs_rect.xMinimum(), wgs_rect.yMinimum()
     max_lon, max_lat = wgs_rect.xMaximum(), wgs_rect.yMaximum()
     clip_boundary = _valid_clip_boundary(area_utm)
+    enabled_datasets = set(
+        ("buildings", "roads", "water", "greens", "trees", "furniture")
+        if datasets is None else datasets
+    )
 
-    payload = fetch_overpass(min_lat, min_lon, max_lat, max_lon, feedback=feedback,
-                             use_cache=use_cache)
+    payload = fetch_overpass(
+        min_lat, min_lon, max_lat, max_lon, feedback=feedback,
+        use_cache=use_cache, datasets=datasets,
+    )
     elements = payload.get("elements") or []
     if not elements:
         raise OsmDownloadError("Overpass returned 0 elements for this area. Try a different or larger area.")
@@ -709,6 +895,12 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
     trashbins_layer, tb_pr = _make_layer(
         "OSM Trash bins", "Point", epsg_dest, [("osm_id", QVariant.String), ("amenity", QVariant.String)],
     )
+
+    batches = tuple(_FeatureBatch(provider) for provider in (
+        b_pr, r_pr, bl_pr, g_pr, t_pr, w_pr, wa_pr, bs_pr, be_pr, li_pr, tb_pr,
+    ))
+    (b_pr, r_pr, bl_pr, g_pr, t_pr, w_pr, wa_pr,
+     bs_pr, be_pr, li_pr, tb_pr) = batches
 
     counts = {
         "buildings": 0, "roads": 0, "bikelanes": 0, "greens": 0, "trees": 0,
@@ -953,7 +1145,7 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
             g_pr.addFeatures([feat])
             counts["greens"] += 1
             kind = _green_scatter_kind(tags)
-            if kind:
+            if kind and "trees" in enabled_datasets:
                 placed = _scatter_trees(clipped, kind, t_pr, MAX_SCATTER_TREES - scattered_trees)
                 scattered_trees += placed
                 counts["trees"] += placed
@@ -962,12 +1154,16 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
 
         counts["skipped"] += 1
 
+    for batch in batches:
+        batch.flush()
+
     for layer in (buildings_layer, roads_layer, bikelanes_layer, greens_layer, trees_layer,
                   waterlines_layer, waterareas_layer, busstops_layer, benches_layer, lights_layer, trashbins_layer):
         layer.updateExtents()
 
     return {
         "epsg": epsg_dest,
+        "download": payload.get("_download", {}),
         "counts": counts,
         "buildings": buildings_layer,
         "roads": roads_layer,

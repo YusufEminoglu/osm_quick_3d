@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.50.0] - 2026-08-21
+
+- Add city-scale tiled Overpass acquisition derived from the proven 02Agent OSM Downloader workflow: compact requests of at most 100 km2, a 2,500 km2 job ceiling, no more than 40 tiles, and seam-safe de-duplication by OSM type and id.
+- Replace Python `urlopen` with QGIS's native blocking network request so QGIS proxy, TLS, certificate, and network settings are used consistently instead of producing environment-specific `SSL: WRONG_VERSION_NUMBER` failures.
+- Retry transient network and server failures once, rotate through three pinned HTTPS mirrors, validate HTTP/JSON/Overpass responses, cap each response and the merged object count, and report useful per-mirror details.
+- Cache every successful tile independently. A later retry reuses completed tiles, and a multi-tile job can return a clearly reported partial result instead of discarding all successful work when one public mirror is unavailable.
+- Query only the layer families selected in the Build dock, reducing Overpass response size and geometry work for focused downloads.
+- Batch memory-provider feature inserts instead of crossing the Python/C++ boundary once per feature, greatly reducing construction overhead on large results.
+- Expand the Max area control from 200 km2 to the safe tiled ceiling of 2,500 km2 and explain automatic tiling in its tooltip.
+- Add headless regression coverage for area estimation, tiling bounds, regional-job rejection, response validation, selective queries, and batched writes.
+
 ## [0.20.7] - 2026-08-09
 
 - Add a complete OpenStreetMap, tile-service and Overpass API third-party notice.

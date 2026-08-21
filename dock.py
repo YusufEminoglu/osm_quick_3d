@@ -469,10 +469,14 @@ class PluginDockWidget(QDockWidget):
         form.addRow("", self.shape_hint)
 
         self.max_km2 = QDoubleSpinBox()
-        self.max_km2.setRange(0.1, 200.0)
-        self.max_km2.setSingleStep(0.5)
+        self.max_km2.setRange(0.1, 2500.0)
+        self.max_km2.setSingleStep(5.0)
         self.max_km2.setSuffix(" km2")
         self.max_km2.setValue(6.0)
+        self.max_km2.setToolTip(
+            "Maximum study area. Areas above 100 km2 are automatically split into "
+            "safe sequential Overpass tiles; successful tiles are cached for retry."
+        )
         form.addRow("Max area:", self.max_km2)
         return box
 
