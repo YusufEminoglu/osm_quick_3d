@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.50.1] - 2026-09-06
+
+- Migrate repository and documentation URLs to GitLab and Cloudflare Pages.
+
 ## [0.50.0] - 2026-08-21
 
 - Add city-scale tiled Overpass acquisition derived from the proven 02Agent OSM Downloader workflow: compact requests of at most 100 km2, a 2,500 km2 job ceiling, no more than 40 tiles, and seam-safe de-duplication by OSM type and id.
