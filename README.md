@@ -6,7 +6,7 @@
 
 **One click: OpenStreetMap → a native QGIS 3D city.**
 
-[![Release](https://img.shields.io/github/v/release/YusufEminoglu/osm_quick_3d?color=4a7a76&label=release)](https://gitlab.com/geospacephilo/EasyFillet/releases)
+[![Release](https://img.shields.io/github/v/release/YusufEminoglu/osm_quick_3d?color=4a7a76&label=release)](https://github.com/YusufEminoglu/osm_quick_3d/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Documentation](https://img.shields.io/badge/📖_Reference_Manual-13a0a0)](https://geophilo.com/osm_quick_3d/)
 [![QGIS](https://img.shields.io/badge/QGIS-3.x%20%2B%204.x-589632?logo=qgis&logoColor=white)](https://qgis.org)
@@ -100,7 +100,7 @@ A single dockable panel with two tabs:
 
 ## 🤔 Which one do I want?
 
-| | **OSM Quick 3D** *(this plugin)* | [osm_3d_model](https://gitlab.com/geospacephilo/EasyFillet) |
+| | **OSM Quick 3D** *(this plugin)* | [osm_3d_model](https://github.com/YusufEminoglu/osm_quick_3d) |
 |---|---|---|
 | Output | Native QGIS layers + QGIS 3D view | Three.js web viewer (animated, textured) |
 | Best for | **Larger areas**, analysis, printing, editing | Presentation scenes, facades, traffic animation |
@@ -118,11 +118,11 @@ Same OpenStreetMap download logic under the hood — pick by deliverable.
 > `Plugins → Manage and Install Plugins…` → search **OSM Quick 3D** → Install.
 
 **From ZIP**
-> Download the latest zip from [Releases](https://gitlab.com/geospacephilo/EasyFillet/releases) → `Plugins → Install from ZIP`.
+> Download the latest zip from [Releases](https://github.com/YusufEminoglu/osm_quick_3d/releases) → `Plugins → Install from ZIP`.
 
 **From source** *(development)*
 ```text
-git clone https://gitlab.com/geospacephilo/EasyFillet
+git clone https://github.com/YusufEminoglu/osm_quick_3d
 set QGIS_PLUGINPATH=<clone parent dir>   →  restart QGIS
 ```
 
@@ -155,17 +155,17 @@ This plugin is one of 15 open-source QGIS plugins for urban planning by the same
 
 | Planning & analysis | CAD & production | 3D & visualization |
 |---|---|---|
-| [PlanX](https://gitlab.com/geospacephilo/EasyFillet) — spatial-planning suite | [PlanX CAD Toolset](https://gitlab.com/geospacephilo/EasyFillet) — drafting-grade CAD | [PlanX 3D City](https://gitlab.com/geospacephilo/EasyFillet) — Three.js city viewer |
-| [GeoStats Lab](https://gitlab.com/geospacephilo/EasyFillet) — spatial statistics | [EasyFillet](https://gitlab.com/geospacephilo/EasyFillet) — tangent-arc fillet | [3D OSM Model](https://gitlab.com/geospacephilo/EasyFillet) — OSM → 3D city in browser |
-| [Suitability Lab](https://gitlab.com/geospacephilo/EasyFillet) — raster MCDA | [Settlement Toolset](https://gitlab.com/geospacephilo/EasyFillet) — 9-stage settlement plans | [OSM Quick 3D](https://gitlab.com/geospacephilo/EasyFillet) — OSM → native QGIS 3D |
-| [DataCube Lab](https://gitlab.com/geospacephilo/EasyFillet) — spatiotemporal cubes | [UIP Toolset](https://gitlab.com/geospacephilo/EasyFillet) — Turkish master-plan automation | [Urban Procedural 3D](https://gitlab.com/geospacephilo/EasyFillet) — parametric zoning lab |
-| [Urban Resilience](https://gitlab.com/geospacephilo/EasyFillet) — 28 resilience tools | [ParcelFlux](https://gitlab.com/geospacephilo/EasyFillet) — parcel subdivision | [CartoLab](https://gitlab.com/geospacephilo/EasyFillet) — publication cartography |
+| [PlanX](https://github.com/YusufEminoglu/osm_quick_3d) — spatial-planning suite | [PlanX CAD Toolset](https://github.com/YusufEminoglu/osm_quick_3d) — drafting-grade CAD | [PlanX 3D City](https://github.com/YusufEminoglu/osm_quick_3d) — Three.js city viewer |
+| [GeoStats Lab](https://github.com/YusufEminoglu/osm_quick_3d) — spatial statistics | [EasyFillet](https://github.com/YusufEminoglu/osm_quick_3d) — tangent-arc fillet | [3D OSM Model](https://github.com/YusufEminoglu/osm_quick_3d) — OSM → 3D city in browser |
+| [Suitability Lab](https://github.com/YusufEminoglu/osm_quick_3d) — raster MCDA | [Settlement Toolset](https://github.com/YusufEminoglu/osm_quick_3d) — 9-stage settlement plans | [OSM Quick 3D](https://github.com/YusufEminoglu/osm_quick_3d) — OSM → native QGIS 3D |
+| [DataCube Lab](https://github.com/YusufEminoglu/osm_quick_3d) — spatiotemporal cubes | [UIP Toolset](https://github.com/YusufEminoglu/osm_quick_3d) — Turkish master-plan automation | [Urban Procedural 3D](https://github.com/YusufEminoglu/osm_quick_3d) — parametric zoning lab |
+| [Urban Resilience](https://github.com/YusufEminoglu/osm_quick_3d) — 28 resilience tools | [ParcelFlux](https://github.com/YusufEminoglu/osm_quick_3d) — parcel subdivision | [CartoLab](https://github.com/YusufEminoglu/osm_quick_3d) — publication cartography |
 
 ---
 
 ## 🤝 Contributing & Support
 
-- 🐛 **Bugs / requests** → [Issues](https://gitlab.com/geospacephilo/EasyFillet/-/issues)
+- 🐛 **Bugs / requests** → [Issues](https://github.com/YusufEminoglu/osm_quick_3d/issues)
 - 📜 **Changelog** → [CHANGELOG.md](CHANGELOG.md) follows *Keep a Changelog*
 - ✅ Before a PR: run `py -3 tests/test_pure_logic.py` (headless, no QGIS required)
 
