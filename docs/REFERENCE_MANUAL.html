@@ -4,75 +4,64 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OSM Quick 3D &mdash; Reference Manual</title>
+<link rel="stylesheet" href="assets/manual-chrome.css">
+
 <style>
-:root {--bg:#fafaf8;--sidebar-bg:#f3f3f0;--text:#1a1a1a;--muted:#5a5a55;--accent:#2a6e5e;--border:#d8d5ce;--card-bg:#fff;--link:#1a6e5e;--code-bg:#edf4f2;--search-bg:#fff}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;display:flex;min-height:100vh}
-#sidebar{width:270px;min-width:270px;background:var(--sidebar-bg);border-right:1px solid var(--border);padding:24px 20px;position:sticky;top:0;height:100vh;overflow-y:auto}
-#sidebar h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px}
-#search{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--search-bg);margin-bottom:20px}
-#sidebar nav a{display:block;padding:5px 0;font-size:13px;color:var(--link);text-decoration:none}
-#sidebar nav a:hover{text-decoration:underline}
-#sidebar nav a.sub{padding-left:14px;font-size:12px}
-#main{flex:1;padding:40px 48px;max-width:860px}
-h1{font-size:28px;font-weight:700;color:var(--accent);margin-bottom:4px}
-h1+p{color:var(--muted);margin-bottom:32px}
-h2{font-size:20px;font-weight:600;color:var(--accent);margin:36px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--border)}
-h3{font-size:16px;font-weight:600;color:var(--text);margin:20px 0 8px}
-p,li{font-size:14px;color:var(--text)}
-p{margin-bottom:10px}
-.card{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:14px}
-.card h4{font-size:14px;font-weight:600;color:var(--accent);margin-bottom:6px}
-ul{margin:4px 0 10px 20px}
-li{margin-bottom:3px}
-code{font-family:Consolas,'Courier New',monospace;background:var(--code-bg);padding:1px 6px;border-radius:3px;font-size:13px}
-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
-th,td{border:1px solid var(--border);padding:8px 12px;text-align:left}
-th{background:var(--code-bg);font-weight:600}
-.refs{font-size:12px;color:var(--muted)}
-.refs a{color:var(--link)}
-.formula{background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:10px 16px;margin:8px 0;font-family:Cambria,'Times New Roman',serif;font-size:15px;text-align:center}
-@media(max-width:760px){body{flex-direction:column}#sidebar{width:100%;min-width:auto;height:auto;position:static;border-right:none;border-bottom:1px solid var(--border)}#main{padding:24px}}
-.hidden{display:none}
-.video-embed { position: relative; width: 100%; padding-top: 56.25%; margin: 4px 0 28px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: #000; }
+:root {
+  --chrome-bg: #fafaf8;
+  --chrome-panel-bg: #f3f3f0;
+  --chrome-text: #1a1a1a;
+  --chrome-muted: #5a5a55;
+  --chrome-accent: #c2703d;
+  --chrome-accent-hover: #9c5a30;
+  --chrome-border: #d8d5ce;
+  --chrome-code-bg: #edf4f2;
+}
+.video-embed { position: relative; width: 100%; padding-top: 56.25%; margin: 4px 0 28px; border-radius: 8px; overflow: hidden; border: 1px solid var(--chrome-border); background: #000; }
 .video-embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.refs { font-size: 12px; color: var(--chrome-muted); }
+.refs a { color: var(--chrome-accent); }
 </style>
 </head>
 <body>
-<aside id="sidebar">
-  <input type="text" id="search" placeholder="Search manual&hellip;" autocomplete="off">
+<div class="chrome-layout">
+<aside id="chrome-sidebar">
+  <input type="text" id="chrome-search" placeholder="Search manual&hellip;" autocomplete="off">
   <h2>Contents</h2>
-  <nav id="toc">
-    <a href="#overview">1. Overview</a>
-    <a href="#theory" class="sub">2. Theoretical Foundations</a>
-    <a href="#area" class="sub">3. Study Area Definition</a>
-    <a href="#download" class="sub">4. OSM Data Download</a>
-    <a href="#layers" class="sub">5. Data Layers</a>
-    <a href="#heights" class="sub">6. Building Height Logic</a>
-    <a href="#colors" class="sub">7. Building Colour Modes</a>
-    <a href="#themes" class="sub">8. Map Themes (12)</a>
-    <a href="#extrusion" class="sub">9. 3D Extrusion System</a>
-    <a href="#trees" class="sub">10. Tree Scattering</a>
-    <a href="#styling" class="sub">11. Expression-Based Styling</a>
-    <a href="#live" class="sub">12. Theme &amp; Style Tab</a>
-    <a href="#cache" class="sub">13. Caching System</a>
-    <a href="#params" class="sub">14. Parameters</a>
-    <a href="#workflow" class="sub">15. Workflow</a>
-    <a href="#technical" class="sub">16. Technical Notes</a>
-    <a href="#literature" class="sub">17. Literature</a>
-  </nav>
+  <ul id="chrome-toc">
+    <li><a href="#overview">1. Overview</a></li>
+    <li><a href="#theory">2. Theoretical Foundations</a></li>
+    <li><a href="#area">3. Study Area Definition</a></li>
+    <li><a href="#download">4. OSM Data Download</a></li>
+    <li><a href="#layers">5. Data Layers</a></li>
+    <li><a href="#heights">6. Building Height Logic</a></li>
+    <li><a href="#colors">7. Building Colour Modes</a></li>
+    <li><a href="#themes">8. Map Themes (12)</a></li>
+    <li><a href="#extrusion">9. 3D Extrusion System</a></li>
+    <li><a href="#trees">10. Tree Scattering</a></li>
+    <li><a href="#styling">11. Expression-Based Styling</a></li>
+    <li><a href="#live">12. Theme &amp; Style Tab</a></li>
+    <li><a href="#cache">13. Caching System</a></li>
+    <li><a href="#params">14. Parameters</a></li>
+    <li><a href="#workflow">15. Workflow</a></li>
+    <li><a href="#technical">16. Technical Notes</a></li>
+    <li><a href="#literature">17. Literature</a></li>
+    <li class="chrome-no-results">No matches</li>
+  </ul>
 </aside>
-<main id="main">
+<main class="chrome-content">
 <h1>OSM Quick 3D</h1>
-<p>OSM to native QGIS 2D/3D styled layers with flat-roof building massing &bull; v0.20.4</p>
-
+<p>OSM to native QGIS 2D/3D styled layers with flat-roof building massing &bull; v0.50.1</p>
 <div class="video-embed">
   <iframe src="https://www.youtube-nocookie.com/embed/KSl0RIKCEIo" title="OSM Quick 3D &mdash; video walkthrough" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
 </div>
 
+<section id="overview">
 <h2 id="overview">1. Overview</h2>
 <p>OSM Quick 3D downloads OpenStreetMap data for a user-defined study area and produces native QGIS vector layers styled by function, with optional 3D building extrusion through QGIS's own 3D symbology engine. Unlike its sibling plugin <em>osm_3d_model</em> (which opens a browser-based Three.js viewer), OSM Quick 3D keeps everything inside QGIS as editable vector layers&mdash;suited for larger areas, analysis, printing, and manual editing. The plugin provides a dock-based, two-tab control panel with a Build tab for data acquisition and a Theme &amp; Style tab for live retuning.</p>
+</section>
 
+<section id="theory">
 <h2 id="theory">2. Theoretical Foundations</h2>
 
 <h3>2.1 OpenStreetMap as Urban Data Infrastructure</h3>
@@ -80,23 +69,29 @@ th{background:var(--code-bg);font-weight:600}
 
 <h3>2.2 Level of Detail in 3D City Models</h3>
 <p>Kolbe (2009) formalised the CityGML LOD (Level of Detail) hierarchy for 3D city models: LOD1 comprises prismatic building blocks with flat roofs derived from footprints and height attributes, LOD2 adds roof structures, and LOD3 adds architectural details. OSM Quick 3D produces LOD1 models: flat-roofed extrusions from OSM building footprints with heights derived from OSM tags or typology-based defaults. Biljecki et al. (2017) demonstrated that LOD1 models generated from OSM without elevation data can achieve high accuracy when building height attributes are present, supporting the plugin's three-tier height fallback strategy.</p>
+</section>
 
+<section id="area">
 <h2 id="area">3. Study Area Definition</h2>
-<div class="card">
+<div class="chrome-card">
   <h4>Boundary Sources and Shapes</h4>
   <p>Two area sources: <strong>Visible map extent</strong> (canvas) or <strong>Selected features</strong> (active layer, dissolved via <code>unaryUnion()</code>). Five boundary shapes: <strong>Rectangle</strong> (raw bounding box), <strong>Rounded rectangle</strong> (corners at ~18% of short side via double-buffer technique: <code>buffer(-corner, 12)</code> then <code>buffer(+corner, 12)</code>), <strong>Circle</strong> (inscribed, radius = min(width, height) / 2, 64 segments), <strong>Hexagon</strong> (pointy-top orientation, 6 points at 60&deg; intervals starting at &minus;30&deg;, inscribed), and <strong>Polygon</strong> (user-selected feature, dissolved if multiple).</p>
   <p>The area is auto-projected to its local UTM zone via <code>utm_epsg_for()</code>: zone = \(\lfloor(\lambda + 180)/6\rfloor + 1\), clamped 1&ndash;60, EPSG = 32600 + zone (north) or 32700 + zone (south). Area is clamped to a configurable maximum in square kilometres (default 6 km<sup>2</sup>) by shrinking uniformly around the centroid.</p>
 </div>
+</section>
 
+<section id="download">
 <h2 id="download">4. OSM Data Download</h2>
-<div class="card">
+<div class="chrome-card">
   <h4>Overpass API Pipeline with Multi-Mirror Fallback</h4>
   <p>The plugin constructs a single Overpass QL query requesting all features within the WGS84 bounding box: ways and relations with <code>building</code>, <code>highway</code>, <code>waterway</code> (river/stream/canal/drain/ditch/riverbank), <code>leisure</code> (park/garden/playground/pitch/nature_reserve/common/dog_park/golf_course), <code>landuse</code> (forest/grass/meadow/recreation_ground/cemetery/reservoir/basin/village_green/orchard/vineyard/farmland/allotments/greenfield), <code>natural</code> (wood/scrub/water/grassland/heath), <code>amenity</code> (parking/marketplace), and <code>place=square</code>; plus nodes for trees, bus stops (also <code>public_transport=platform</code>), benches, street lamps, and waste baskets. The query uses <code>out body geom;</code> for full geometry, with a 60-second timeout.</p>
   <p><strong>Multi-mirror fallback:</strong> Three endpoints are tried in order (<code>overpass-api.de</code>, <code>overpass.kumi.systems</code>, <code>overpass.private.coffee</code>) with a 10-second additional HTTP read timeout. HTTP 429 (rate-limited) triggers the next mirror. The first endpoint returning valid, non-empty JSON wins. Feedback messages distinguish first query from mirror fallback.</p>
 </div>
+</section>
 
+<section id="layers">
 <h2 id="layers">5. Data Layers</h2>
-<div class="card">
+<div class="chrome-card">
   <h4>Twelve Layer Types</h4>
   <p>The plugin creates 12 in-memory vector layers (all Multi* geometry for features potentially split by clipping):</p>
   <table>
@@ -116,9 +111,11 @@ th{background:var(--code-bg);font-weight:600}
   </table>
   <p>Each layer is clipped against the valid study boundary (<code>geom.makeValid()</code> if needed, then <code>intersection(clip_boundary)</code>). Multipolygon assembly handles OSM relations with outer/inner ring roles for buildings with courtyards. Geometry classification follows a priority order: tree nodes &rarr; water areas &rarr; parking lots &rarr; paved squares &rarr; buildings &rarr; roads (with cycleway deduplication) &rarr; waterways &rarr; greens.</p>
 </div>
+</section>
 
+<section id="heights">
 <h2 id="heights">6. Building Height Logic</h2>
-<div class="card">
+<div class="chrome-card">
   <h4>Three-Tier Fallback with 57 Type-Specific Defaults</h4>
   <p>Height is derived per-building by <code>_building_levels()</code>:</p>
   <ol>
@@ -129,9 +126,11 @@ th{background:var(--code-bg);font-weight:600}
   </ol>
   <p>For the 3D extrusion expression: <code>coalesce(to_real("height"), to_int("building_levels") &times; 3, 9)</code>. The nine-metre default (3 floors at 3 m/floor) serves as the ultimate fallback when neither OSM height tag nor building:levels tag is present and the building type is unrecognised.</p>
 </div>
+</section>
 
+<section id="colors">
 <h2 id="colors">7. Building Colour Modes (8)</h2>
-<div class="card">
+<div class="chrome-card">
   <h4>Function-Based and Height-Based Schemes</h4>
   <table>
     <tr><th>Mode</th><th>2D Renderer</th><th>Description</th></tr>
@@ -146,9 +145,11 @@ th{background:var(--code-bg);font-weight:600}
   </table>
   <p>The height expression reads actual layer values: <code>coalesce(to_real("height"), to_int("building_levels") &times; 3, 9.0)</code>. Break values and 5 interpolated colours are cached per layer ID for performance.</p>
 </div>
+</section>
 
+<section id="themes">
 <h2 id="themes">8. Map Themes (12)</h2>
-<div class="card">
+<div class="chrome-card">
   <h4>Coordinated Colour Palettes</h4>
   <table>
     <tr><th>Theme</th><th>Background</th><th>Character</th></tr>
@@ -167,9 +168,11 @@ th{background:var(--code-bg);font-weight:600}
   </table>
   <p>Each theme sets: background colour, 6 building function colours, building height ramp (low&rarr;high), major road colour (motorway/primary/secondary/tertiary), minor road colour (residential/service/foot/other), greens colour (park/forest/pitch/cemetery/water category), water colour, and tree colour. Theme changes are live: they update the canvas background, recolour all layers, and refresh the 3D view without re-downloading data.</p>
 </div>
+</section>
 
+<section id="extrusion">
 <h2 id="extrusion">9. Native QGIS 3D Extrusion</h2>
-<div class="card">
+<div class="chrome-card">
   <h4>Rule-Based 3D Renderer with Phong Materials</h4>
   <p>Building 3D extrusion uses <code>QgsRuleBased3DRenderer</code> with per-function or per-height-class child rules:</p>
   <ul>
@@ -182,9 +185,11 @@ th{background:var(--code-bg);font-weight:600}
   <p><strong>Tree canopies:</strong> <code>QgsPoint3DSymbol</code> with Sphere shape (2.5 m radius). Transformed with <code>QMatrix4x4().translate(0, 0, 2.5)</code> so spheres rest on the surface. Phong material with theme tree colour.</p>
   <p><strong>Managed 3D canvas:</strong> Reuses a named <code>Qgs3DMapCanvas</code> ("OSM Quick 3D Scene") via <code>iface.createNewMapCanvas3D()</code>. Flat terrain with configurable tile resolution. Camera: distance = max(width, height, 100) &times; 1.35, pitch = 45&deg;, zero bearing. Basemap clipping via <code>QgsMapClippingRegion</code> in <code>ClipPainterOnly</code> mode.</p>
 </div>
+</section>
 
+<section id="trees">
 <h2 id="trees">10. Tree Scattering Algorithm</h2>
-<div class="card">
+<div class="chrome-card">
   <h4>Deterministic Procedural Tree Placement</h4>
   <p>Procedural trees are placed inside wooded green polygons (forest, wood, park, garden, etc.) using a deterministic seeded RNG:</p>
   <table>
@@ -205,9 +210,11 @@ th{background:var(--code-bg);font-weight:600}
   <p><strong>RNG:</strong> A Knuth MMIX linear congruential generator seeded from the polygon's bounding box coordinates, area, and green type code: seed = (bbox_minX &times; 73856093) XOR (bbox_minY &times; 19349663) XOR (area &times; 83492791) XOR (kind_code &times; 2654435761), masked to 32 bits. This ensures that re-running the same area produces identical tree placement every time.</p>
   <p><strong>Global cap:</strong> 500 total trees; per-polygon cap: 130. Target per polygon: min(130, remaining_cap, floor(polygon_area / spacing)). Rejection sampling: random points within the bounding box, accepted if <code>geom_utm.contains(pt)</code>, up to 8&times; target attempts.</p>
 </div>
+</section>
 
+<section id="styling">
 <h2 id="styling">11. Expression-Based Styling</h2>
-<div class="card">
+<div class="chrome-card">
   <h4>QGIS Expressions for Data-Driven Rendering</h4>
   <p>The plugin uses QGIS expression strings extensively, avoiding per-feature Python loops:</p>
   <ul>
@@ -221,20 +228,26 @@ th{background:var(--code-bg);font-weight:600}
   </ul>
   <p>All colour and width properties are applied as data-defined overrides (<code>QgsProperty.fromExpression()</code>) rather than fixed renderer values, enabling live retuning without rebuilding the renderer.</p>
 </div>
+</section>
 
+<section id="live">
 <h2 id="live">12. Theme &amp; Style Tab</h2>
-<div class="card">
+<div class="chrome-card">
   <h4>Post-Build Live Retuning</h4>
   <p>The Theme &amp; Style tab operates on an existing OSM Quick 3D layer group. Controls: group selector, theme combo with preview swatches, six colour pickers (major roads, minor roads, greens, water, trees, scene background), building colour mode, classification method (continuous/discrete/quantile), height exaggeration (0.5&ndash;5.0x), building opacity (0&ndash;100%), tree canopy size, tree colour, 3D view controls (Open/Refresh/Focus/Close), per-layer 3D visibility checkboxes, scene resolution selector, and basemap clip region management.</p>
   <p>The key design pattern: <code>_apply_changes()</code> freezes the canvas, applies all current state in one batch, unfreezes, and refreshes&mdash;avoiding intermediate redraws. The 3D view is refreshed via <code>_refresh_3d_view()</code> with delayed retry timers (600 ms, 1500 ms, 3000 ms). A scene info panel shows real-time stats: 3D canvas open/closed, visible layer count, basemap clip status, and resolution.</p>
 </div>
+</section>
 
+<section id="cache">
 <h2 id="cache">13. Caching System</h2>
-<div class="card">
+<div class="chrome-card">
   <h4>SHA-256 Disk Cache with 7-Day TTL</h4>
   <p>Responses are cached as JSON files in <code>%TEMP%/osm_quick_3d_cache/</code>. The cache key is SHA-256 of the full Overpass query string (truncated to 40 hex characters). TTL: 604800 seconds (7 days). On cache miss: fetch from Overpass, write back. On cache hit: validate payload structure; if corrupt, discard and re-fetch. A "Clear cache" button reports files removed and bytes freed. The "Use OSM cache" checkbox allows users to bypass the cache for fresh data.</p>
 </div>
+</section>
 
+<section id="params">
 <h2 id="params">14. Parameters and Controls</h2>
 
 <h3>Build Tab</h3>
@@ -253,7 +266,9 @@ th{background:var(--code-bg);font-weight:600}
   <tr><td>Save to GeoPackage</td><td>QCheckBox</td><td>On / Off</td><td>Off</td></tr>
   <tr><td>Use OSM cache</td><td>QCheckBox</td><td>On / Off</td><td>On</td></tr>
 </table>
+</section>
 
+<section id="workflow">
 <h2 id="workflow">15. Workflow Guide</h2>
 <ol>
   <li>Open the OSM Quick 3D dock from the toolbar icon.</li>
@@ -265,7 +280,9 @@ th{background:var(--code-bg);font-weight:600}
   <li>Switch to the <strong>Theme &amp; Style</strong> tab for live retuning of colours, themes, building opacity, tree size, and per-layer 3D visibility without re-downloading data.</li>
   <li>Optionally export to GeoPackage (with layer prefix) for persistence across sessions.</li>
 </ol>
+</section>
 
+<section id="technical">
 <h2 id="technical">16. Technical Notes</h2>
 <ul>
   <li><strong>Multi-mirror Overpass:</strong> Three endpoints tried in order with 60-second query timeout + 10-second HTTP timeout. Cache: SHA-256 keyed JSON in temp directory, 7-day TTL.</li>
@@ -275,7 +292,9 @@ th{background:var(--code-bg);font-weight:600}
   <li><strong>No external dependencies:</strong> Pure qgis.core / qgis.gui / qgis.PyQt. No .ui files&mdash;all UI built programmatically in <code>dock.py</code>.</li>
   <li><strong>Geometry clipping robustness:</strong> All geometries transformed to WGS84 for Overpass, reprojected to UTM for clipping. Invalid geometries pass through <code>makeValid()</code>. Features that fall entirely within the boundary after intersection failure are preserved.</li>
 </ul>
+</section>
 
+<section id="literature">
 <h2 id="literature">17. Literature</h2>
 <ol class="refs">
   <li>Haklay, M. &amp; Weber, P. (2008). OpenStreetMap: User-generated street maps. <em>IEEE Pervasive Computing</em>, 7(4), 12&ndash;18. <a href="https://doi.org/10.1109/MPRV.2008.80">DOI: 10.1109/MPRV.2008.80</a></li>
@@ -286,34 +305,11 @@ th{background:var(--code-bg);font-weight:600}
   <li>Goodchild, M. F. (2007). Citizens as sensors: The world of volunteered geography. <em>GeoJournal</em>, 69(4), 211&ndash;221. <a href="https://doi.org/10.1007/s10708-007-9111-y">DOI: 10.1007/s10708-007-9111-y</a></li>
   <li>Mooney, P. &amp; Minghini, M. (2017). A review of OpenStreetMap data. In G. Foody et al. (Eds.), <em>Mapping and the Citizen Sensor</em> (pp. 37&ndash;59). Ubiquity Press. <a href="https://doi.org/10.5334/bbf.c">DOI: 10.5334/bbf.c</a></li>
 </ol>
+</section>
 </main>
-<script>
-(function(){
-  var inp=document.getElementById('search');
-  var main=document.getElementById('main');
-  if(!inp||!main)return;
-  var all=main.querySelectorAll('h2,h3,p,li,td');
-  inp.addEventListener('input',function(){
-    var q=inp.value.trim().toLowerCase();
-    all.forEach(function(el){el.classList.remove('hidden');});
-    if(!q)return;
-    var sections=main.querySelectorAll('h2');
-    sections.forEach(function(h){
-      var next=h.nextElementSibling;
-      var keep=h.textContent.toLowerCase().indexOf(q)!==-1;
-      while(next && next.tagName!=='H2'){
-        if(next.textContent.toLowerCase().indexOf(q)!==-1)keep=true;
-        next=next.nextElementSibling;
-      }
-      if(!keep){
-        next=h.nextElementSibling;
-        while(next && next.tagName!=='H2'){next.classList.add('hidden');next=next.nextElementSibling;}
-        h.classList.add('hidden');
-      }
-    });
-  });
-})();
-</script>
+</div>
+
+<script src="assets/manual-chrome.js"></script>
 
 <!-- PDF PRINT BUTTON -->
 <style>
@@ -328,7 +324,7 @@ th{background:var(--code-bg);font-weight:600}
 @media print { #print-pdf-btn { display: none !important; } }
 @media (max-width: 768px) { #print-pdf-btn { bottom: 12px; right: 12px; padding: 8px 14px; font-size: 12px; } }
 </style>
-<button id="print-pdf-btn" onclick="window.print()" title="Save as PDF / Print">&#x1F5A8;&#xFE0F; Save as PDF</button>
+<button id="print-pdf-btn" onclick="window.print()" title="Save as PDF / Print">🖨️ Save as PDF</button>
 
 </body>
 </html>
