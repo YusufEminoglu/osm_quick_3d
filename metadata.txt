@@ -3,7 +3,7 @@ name=OSM Quick 3D
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=One-click OpenStreetMap into native QGIS: function-styled vector layers plus flat-roof 3D building massing on a selectable study-area shape (rectangle, rounded rectangle, circle, hexagon or your own selected polygon), with selectable map themes, an optional recessed base and a basemap underlay.
-version=0.50.1
+version=0.50.2
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -23,6 +23,7 @@ hasProcessingProvider=no
 license=MIT
 
 changelog=
+    0.50.2 - Redesign plugin icon to high-end 3D tactile brand design with circular teal pedestal, zero margin, and refreshed documentation links.
     OSM Quick 3D 0.50.0
         - Add reliable city-scale downloads: areas up to 2,500 km2 are split into compact 100 km2 Overpass requests, cached independently, merged without seam duplicates, and allowed to recover partially when a public mirror fails.
         - Use QGIS's native network stack so proxy and TLS settings are respected, eliminating the urllib SSL mismatch path; add transient retry, three-mirror fallback, response and object caps, and actionable failure details.

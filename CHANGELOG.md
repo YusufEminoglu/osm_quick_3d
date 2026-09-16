@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.50.2] - 2026-09-16
+
+- Redesign plugin icon to high-end 3D tactile brand design with circular teal pedestal, zero margin, and refreshed documentation links.
+
 ## [0.50.1] - 2026-09-06
 
 - Migrate repository and documentation URLs to GitLab and Cloudflare Pages.
