@@ -3,7 +3,7 @@ name=OSM Quick 3D
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=One-click OpenStreetMap into native QGIS: function-styled vector layers plus flat-roof 3D building massing on a selectable study-area shape (rectangle, rounded rectangle, circle, hexagon or your own selected polygon), with selectable map themes, an optional recessed base and a basemap underlay.
-version=0.50.2
+version=0.51.0
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -23,6 +23,14 @@ hasProcessingProvider=no
 license=MIT
 
 changelog=
+    0.51.0
+        - Real 3D DEM terrain integration (QgsDemTerrainSettings) with selectable project raster layer (empty by default) and vertical exaggeration control (0.5x to 5.0x) in both Build and Theme and Style tabs.
+        - 3D scene atmosphere and lighting controls: Eye-Dome Lighting (EDL), directional sun shadows with live azimuth and altitude controls, and Screen-Space Ambient Occlusion (SSAO).
+        - Stepped and podium building parts: Overpass query and 3D massing now support building:part, min_height, and building:min_level with base-elevation offset (PropertyHeight) and net prism height.
+        - Per-building shade variation in 2D and 3D (3 deterministic tone sub-rules per function category so adjacent buildings in row blocks never merge visually), plus two new architectural ramps (Copper and bronze, Nordic glacier).
+        - 2D sun drop-shadow and 2.5D axonometric depth effects for print-ready 2D maps, plus 1-click Save 2D Map PNG snapshot export.
+        - Height-tiered 3D trees with trunk cylinders and scaled crowns, plus theme-aware 2D and 3D street furniture (street lamps with pole and glowing head, bus stops, benches, trash bins).
+        - Automatic persistence of 2D and 3D styles into GeoPackage (saveStyleToDatabase as default style), live canvas area (km2) readout with clip warning, and a Cancel button during multi-tile downloads.
     0.50.2 - Redesign plugin icon to high-end 3D tactile brand design with circular teal pedestal, zero margin, and refreshed documentation links.
     OSM Quick 3D 0.50.0
         - Add reliable city-scale downloads: areas up to 2,500 km2 are split into compact 100 km2 Overpass requests, cached independently, merged without seam duplicates, and allowed to recover partially when a public mirror fails.

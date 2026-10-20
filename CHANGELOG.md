@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.51.0] - 2026-10-20
+
+- **3D DEM Terrain Integration**: Optional project DEM/DTM raster selector (initialized empty) and vertical exaggeration control (`0.5x–5.0x`) in both the **Build** and **Theme & Style** tabs, configuring `QgsDemTerrainSettings` on the managed 3D scene.
+- **3D Scene Atmosphere & Lighting**: Added **Eye-Dome Lighting (EDL)**, **Directional Sun Shadows** with live Sun Azimuth (`0°–360°`) and Sun Altitude (`10°–85°`) controls, and **Screen-Space Ambient Occlusion (SSAO)** on `Qgs3DMapSettings`.
+- **Stepped & Podium Building Massing (`building:part` & `min_height`)**: Queries `way["building:part"]` and `relation["building:part"]`, parses `min_height` and `building:min_level`, and binds `PropertyHeight` alongside net prism extrusion height (`PropertyExtrusionHeight`) without double-counting footprint/GFA totals.
+- **Per-Building Shade Variation & New Ramps**: Deterministic per-building shade variation in both 2D and 3D (`QgsRuleBased3DRenderer` sub-rules) so adjacent buildings in row blocks stay visually distinct, plus **Copper & bronze** (`copper_gold`) and **Nordic glacier** (`nordic_ice`) colour ramps.
+- **2D Sun Drop-Shadow, 2.5D Axonometric Depth & PNG Snapshot**: Added toggleable 2D sun drop-shadow (`QgsDropShadowEffect`), 2.5D isometric plinth depth for print layouts, and a one-click **Save 2D Map PNG…** button.
+- **Height-Tiered 3D Trees & 3D Street Furniture**: Upgraded 3D trees to 3 height tiers (`< 5.5 m`, `5.5–9 m`, `>= 9 m`) with brown trunk cylinders and scaled crowns, and added theme-aware 2D + 3D street furniture (`lights`, `busstops`, `benches`, `trashbins`).
+- **GeoPackage Style Persistence, Live Area Readout & Cancel Button**: Automatically saves 2D and 3D styles as the default layer style inside the `.gpkg` (`saveStyleToDatabase`), shows live `Canvas extent: ≈ X.XX km²` with an amber warning when exceeding `Max area`, and provides a **Cancel** button during downloads.
+
 ## [0.50.2] - 2026-09-16
 
 - Redesign plugin icon to high-end 3D tactile brand design with circular teal pedestal, zero margin, and refreshed documentation links.

@@ -31,6 +31,7 @@ from .osm_download import (
     BASE_DEPTH_M,
     SHAPE_POLYGON,
     SHAPE_RECTANGLE,
+    OsmCancelledError,
     OsmDownloadError,
     build_base_layer,
     download_osm_for_area,
@@ -284,12 +285,12 @@ class OsmQuick3DPlugin:
 
     def _layer_specs(self, p):
         """(result key, wanted?, style function) in bottom-to-top draw order."""
-        def points(color_hex, size):
-            return lambda layer: styling.style_points(layer, color_hex, size)
-
         color_mode = p.get("building_color", styling.BUILDING_COLOR_FUNCTION)
         classification = p.get("classification", "continuous")
         theme = p.get("theme", "default")
+        shade_var = p.get("shade_variation", True)
+        shadow_2d = p.get("shadow_2d", True)
+        mode_25d = p.get("mode_25d", False)
         return [
             ("greens", p["want_greens"], lambda layer: styling.style_greens(layer, theme=theme)),
             ("waterareas", p["want_water"], lambda layer: styling.style_waterareas(layer, theme=theme)),
@@ -297,12 +298,15 @@ class OsmQuick3DPlugin:
             ("bikelanes", p["want_roads"], styling.style_bikelanes),
             ("roads", p["want_roads"], lambda layer: styling.style_roads(layer, theme=theme)),
             ("trees", p["want_trees"], lambda layer: styling.style_trees(layer, theme=theme)),
-            ("busstops", p["want_furniture"], points("#c7976a", 2.0)),
-            ("benches", p["want_furniture"], points("#a98c6a", 1.6)),
-            ("lights", p["want_furniture"], points("#d8c98a", 1.6)),
-            ("trashbins", p["want_furniture"], points("#8a9a8a", 1.4)),
+            ("busstops", p["want_furniture"], lambda layer: styling.style_furniture(layer, "busstops", theme=theme)),
+            ("benches", p["want_furniture"], lambda layer: styling.style_furniture(layer, "benches", theme=theme)),
+            ("lights", p["want_furniture"], lambda layer: styling.style_furniture(layer, "lights", theme=theme)),
+            ("trashbins", p["want_furniture"], lambda layer: styling.style_furniture(layer, "trashbins", theme=theme)),
             ("buildings", p["want_buildings"],
-             lambda layer: styling.style_buildings(layer, color_mode, classification=classification, theme=theme)),
+             lambda layer: styling.style_buildings(
+                 layer, color_mode, classification=classification, theme=theme,
+                 shade_variation=shade_var, shadow_2d=shadow_2d, mode_25d=mode_25d,
+             )),
         ]
 
     def _ask_gpkg_path(self):
@@ -453,6 +457,8 @@ class OsmQuick3DPlugin:
             return
 
         self._set_status(f"Downloading… (~{area_km2:.1f} km², EPSG:{epsg})")
+        if self.dock:
+            self.dock.set_running(True)
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             datasets = tuple(
@@ -469,7 +475,11 @@ class OsmQuick3DPlugin:
                 area_utm, epsg, feedback=self._set_status,
                 use_cache=p.get("use_cache", True),
                 datasets=datasets,
+                cancel_check=(self.dock.is_cancelled if self.dock else None),
             )
+        except OsmCancelledError as exc:
+            self._set_status(str(exc), error=True)
+            return
         except OsmDownloadError as exc:
             self._error("OSM download error", str(exc))
             self._set_status(str(exc), error=True)
@@ -480,6 +490,8 @@ class OsmQuick3DPlugin:
             return
         finally:
             QApplication.restoreOverrideCursor()
+            if self.dock:
+                self.dock.set_running(False)
 
         gpkg_path = None
         if p.get("save_gpkg"):
@@ -501,6 +513,8 @@ class OsmQuick3DPlugin:
             canvas.setCanvasColor(QColor(t_data["bg"]))
             
             added, total, buildings_layer, trees_layer = [], 0, None, None
+            styled_layers = []
+            furniture_layers = {}
             gpkg_first, gpkg_failed = True, False
             for key, wanted, style_fn in self._layer_specs(p):
                 if not wanted:
@@ -531,6 +545,7 @@ class OsmQuick3DPlugin:
                     group.insertLayer(0, layer)
                 else:
                     project.addMapLayer(layer)
+                styled_layers.append(layer)
                 total += layer.featureCount()
                 added.append(f"{layer.featureCount()} {key}")
                 # Optional name labels for the layers that carry a name field.
@@ -542,6 +557,8 @@ class OsmQuick3DPlugin:
                     buildings_layer = layer
                 elif key == "trees":
                     trees_layer = layer
+                elif key in ("busstops", "benches", "lights", "trashbins"):
+                    furniture_layers[key] = layer
 
             if not added:
                 self._error("No result", "No OSM features found in the selected layers for this area.")
@@ -565,15 +582,24 @@ class OsmQuick3DPlugin:
                     color_mode=p.get("building_color", styling.BUILDING_COLOR_FUNCTION),
                     classification=p.get("classification", "continuous"),
                     theme=theme,
+                    shade_variation=p.get("shade_variation", True),
                 )
                 with contextlib.suppress(Exception):
                     buildings_layer.setCustomProperty("osm_quick_3d/theme", theme)
                     buildings_layer.setCustomProperty("osm_quick_3d/building_color", p.get("building_color", styling.BUILDING_COLOR_FUNCTION))
                     buildings_layer.setCustomProperty("osm_quick_3d/classification", p.get("classification", "continuous"))
                     buildings_layer.setCustomProperty("osm_quick_3d/height_scale", p.get("height_scale", 1.0))
-            # Tree points get a matching 3D pass (green/theme canopies) when 3D is on.
+            # Tree points get a matching 3D pass (height-tiered trunks + canopies) when 3D is on.
             if p["extrude_3d"] and trees_layer is not None:
-                native3d.apply_tree_3d(trees_layer, color_hex=t_data["trees"])
+                native3d.apply_tree_3d(
+                    trees_layer,
+                    color_hex=t_data["trees"],
+                    height_scale=p.get("height_scale", 1.0),
+                )
+            # Street furniture gets 3D lamps/totems/benches when 3D is on.
+            if p["extrude_3d"] and furniture_layers:
+                for furn_role, furn_layer in furniture_layers.items():
+                    native3d.apply_furniture_3d(furn_layer, role=furn_role)
 
             # Ground base: a recessed slab the city stands on, under everything.
             base_layer = None
@@ -581,6 +607,15 @@ class OsmQuick3DPlugin:
                 base_layer, base_gpkg_failed = self._add_base_layer(
                     p, area_utm, epsg, group, gpkg_path, gpkg_first)
                 gpkg_failed = gpkg_failed or base_gpkg_failed
+                if base_layer is not None:
+                    styled_layers.append(base_layer)
+
+            # Persist 2D + 3D symbology into the GeoPackage's layer_styles table
+            # so reopening the .gpkg in any QGIS project preserves the full look.
+            if gpkg_path is not None:
+                for lyr in styled_layers:
+                    with contextlib.suppress(Exception):
+                        lyr.saveStyleToDatabase(lyr.name(), "OSM Quick 3D default style", True, "")
 
             if p["basemap"] is not None:
                 self._setup_basemap_masking(p["basemap"], group)

@@ -72,7 +72,16 @@ def _layer_filters():
     try:
         return pm.Filter.RasterLayer | pm.Filter.VectorLayer
     except AttributeError:
-        return pm.RasterLayer | pm.VectorLayer
+        return getattr(pm, "RasterLayer") | getattr(pm, "VectorLayer")
+
+
+def _raster_filter():
+    """Raster-only filter for DEM terrain QgsMapLayerComboBox."""
+    pm = QgsMapLayerProxyModel
+    try:
+        return pm.Filter.RasterLayer
+    except AttributeError:
+        return getattr(pm, "RasterLayer")
 
 
 class PluginDockWidget(QDockWidget):
@@ -279,10 +288,14 @@ class PluginDockWidget(QDockWidget):
         self._managed_canvas = None
         self._managed_canvas_name = native3d.MANAGED_3D_CANVAS_NAME
         self._scene_clip_geometry = None
+        self._cancel_requested = False
 
         self._build_ui()
         self._restore()
         self.refresh_groups()
+        with contextlib.suppress(Exception):
+            self.iface.mapCanvas().extentsChanged.connect(self._update_canvas_area_readout)
+        self._update_canvas_area_readout()
 
     def _build_ui(self):
         self.setStyleSheet(self._QSS)
@@ -419,6 +432,10 @@ class PluginDockWidget(QDockWidget):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
+        run_row = QHBoxLayout()
+        run_row.setContentsMargins(0, 0, 0, 0)
+        run_row.setSpacing(6)
+
         self.run_btn = QPushButton("Download & build 3D")
         self.run_btn.setObjectName("PrimaryRun")
         # Explicit inline style so the teal fill can't be dropped by a native Qt
@@ -436,7 +453,20 @@ class PluginDockWidget(QDockWidget):
         with contextlib.suppress(Exception):
             self.run_btn.setCursor(_qt_value(Qt, "CursorShape", "PointingHandCursor"))
         self.run_btn.clicked.connect(self._emit_run)
-        layout.addWidget(self.run_btn)
+        run_row.addWidget(self.run_btn, 1)
+
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setStyleSheet(
+            "QPushButton{background-color:#fff5f5;border:1px solid #d98282;color:#a32525;"
+            "font-weight:700;font-size:11px;border-radius:6px;padding:8px 12px;}"
+            "QPushButton:hover{background-color:#fee2e2;border-color:#a32525;}"
+        )
+        self.cancel_btn.setMinimumHeight(34)
+        self.cancel_btn.setVisible(False)
+        self.cancel_btn.clicked.connect(self._on_cancel_clicked)
+        run_row.addWidget(self.cancel_btn)
+
+        layout.addLayout(run_row)
         return tab
 
     def _download_area_group(self):
@@ -477,7 +507,14 @@ class PluginDockWidget(QDockWidget):
             "Maximum study area. Areas above 100 km2 are automatically split into "
             "safe sequential Overpass tiles; successful tiles are cached for retry."
         )
+        self.max_km2.valueChanged.connect(self._update_canvas_area_readout)
+        self.area_source.currentIndexChanged.connect(self._update_canvas_area_readout)
         form.addRow("Max area:", self.max_km2)
+
+        self.canvas_area_label = QLabel("Canvas extent: —")
+        self.canvas_area_label.setWordWrap(True)
+        self.canvas_area_label.setStyleSheet("color:#2f756f;font-size:10px;font-weight:600;background:transparent;")
+        form.addRow("", self.canvas_area_label)
         return box
 
     def _download_layers_group(self):
@@ -540,11 +577,36 @@ class PluginDockWidget(QDockWidget):
         self.download_color_preview.setFixedHeight(14)
         form.addRow("", self.download_color_preview)
 
+        self.cb_shade_variation = QCheckBox("Per-building shade variation")
+        self.cb_shade_variation.setChecked(True)
+        self.cb_shade_variation.setToolTip("Apply subtle tone variations per building so adjacent row buildings do not merge visually.")
+        form.addRow("", self.cb_shade_variation)
+
+        self.cb_shadow_2d = QCheckBox("2D sun drop-shadow")
+        self.cb_shadow_2d.setChecked(True)
+        self.cb_shadow_2d.setToolTip("Cast a crisp sun drop-shadow under building footprints on the 2D map.")
+        form.addRow("", self.cb_shadow_2d)
+
+        self.cb_mode_25d = QCheckBox("2.5D axonometric depth (2D map)")
+        self.cb_mode_25d.setChecked(False)
+        self.cb_mode_25d.setToolTip("Render an isometric plinth + shadow effect on the 2D canvas for print layouts.")
+        form.addRow("", self.cb_mode_25d)
+
         self.cb_base = QCheckBox("Add recessed ground base")
         form.addRow("", self.cb_base)
 
         self.cb_open3d = QCheckBox("Open managed 3D Map View")
         form.addRow("", self.cb_open3d)
+
+        self.cb_edl = QCheckBox("3D Eye-Dome Lighting (EDL)")
+        self.cb_edl.setChecked(True)
+        self.cb_edl.setToolTip("Enhance depth perception and silhouette edges in the native QGIS 3D view.")
+        form.addRow("", self.cb_edl)
+
+        self.cb_shadows_3d = QCheckBox("3D sun shadows")
+        self.cb_shadows_3d.setChecked(True)
+        self.cb_shadows_3d.setToolTip("Enable directional sun shadow rendering in the native QGIS 3D view.")
+        form.addRow("", self.cb_shadows_3d)
 
         self.map_resolution = QComboBox()
         self.map_resolution.addItem("Low (256 px)", 256)
@@ -559,7 +621,7 @@ class PluginDockWidget(QDockWidget):
         return box
 
     def _download_output_group(self):
-        box = QGroupBox("Output")
+        box = QGroupBox("Output & Terrain")
         form = self._configure_form(QFormLayout(box))
 
         self.basemap = QgsMapLayerComboBox()
@@ -572,7 +634,26 @@ class PluginDockWidget(QDockWidget):
         self.basemap.setToolTip("Optional: choose a satellite/aerial or other external underlay. OSM vector layers are styled without it.")
         form.addRow("Optional basemap:", self.basemap)
 
-        self.cb_save_gpkg = QCheckBox("Save result to GeoPackage")
+        self.terrain_dem = QgsMapLayerComboBox()
+        self.terrain_dem.setFilters(_raster_filter())
+        self.terrain_dem.setAllowEmptyLayer(True)
+        try:
+            self.terrain_dem.setCurrentLayer(None)
+        except Exception:
+            self.terrain_dem.setCurrentIndex(-1)
+        self.terrain_dem.setToolTip("Optional: select a DEM/DTM raster layer in the project for real 3D terrain elevation; leave empty for flat ground.")
+        form.addRow("Optional DEM terrain:", self.terrain_dem)
+
+        self.terrain_scale = QDoubleSpinBox()
+        self.terrain_scale.setRange(0.5, 5.0)
+        self.terrain_scale.setSingleStep(0.25)
+        self.terrain_scale.setDecimals(2)
+        self.terrain_scale.setSuffix("x")
+        self.terrain_scale.setValue(1.0)
+        self.terrain_scale.setToolTip("Vertical exaggeration factor applied to the DEM terrain in 3D.")
+        form.addRow("Terrain vertical scale:", self.terrain_scale)
+
+        self.cb_save_gpkg = QCheckBox("Save result to GeoPackage (with 2D+3D styles)")
         form.addRow("", self.cb_save_gpkg)
 
         self.cb_use_cache = QCheckBox("Use OSM cache")
@@ -668,6 +749,68 @@ class PluginDockWidget(QDockWidget):
         scene_form.addRow("3D layers:", self.scene_layers_value)
         scene_form.addRow("Basemap clip:", self.scene_clip_value)
         scene_form.addRow("Resolution:", self.scene_resolution_value)
+
+        self.live_terrain_dem = QgsMapLayerComboBox()
+        self.live_terrain_dem.setFilters(_raster_filter())
+        self.live_terrain_dem.setAllowEmptyLayer(True)
+        try:
+            self.live_terrain_dem.setCurrentLayer(None)
+        except Exception:
+            self.live_terrain_dem.setCurrentIndex(-1)
+        self.live_terrain_dem.setToolTip("Optional DEM/DTM raster layer for 3D terrain relief; leave empty for flat terrain.")
+        self.live_terrain_dem.layerChanged.connect(self._on_atmosphere_changed)
+        scene_form.addRow("3D DEM terrain:", self.live_terrain_dem)
+
+        self.live_terrain_scale = QDoubleSpinBox()
+        self.live_terrain_scale.setRange(0.5, 5.0)
+        self.live_terrain_scale.setSingleStep(0.25)
+        self.live_terrain_scale.setDecimals(2)
+        self.live_terrain_scale.setSuffix("x")
+        self.live_terrain_scale.setValue(1.0)
+        self.live_terrain_scale.valueChanged.connect(self._on_atmosphere_changed)
+        scene_form.addRow("Terrain scale:", self.live_terrain_scale)
+
+        self.live_cb_edl = QCheckBox("Eye-Dome Lighting (EDL)")
+        self.live_cb_edl.setChecked(True)
+        self.live_cb_edl.toggled.connect(self._on_atmosphere_changed)
+        scene_form.addRow("", self.live_cb_edl)
+
+        self.live_cb_shadows_3d = QCheckBox("3D sun shadows")
+        self.live_cb_shadows_3d.setChecked(True)
+        self.live_cb_shadows_3d.toggled.connect(self._on_atmosphere_changed)
+        scene_form.addRow("", self.live_cb_shadows_3d)
+
+        self.live_cb_ao = QCheckBox("Ambient occlusion (SSAO)")
+        self.live_cb_ao.setChecked(True)
+        self.live_cb_ao.toggled.connect(self._on_atmosphere_changed)
+        scene_form.addRow("", self.live_cb_ao)
+
+        sun_row = QHBoxLayout()
+        sun_row.setContentsMargins(0, 0, 0, 0)
+        sun_row.setSpacing(6)
+        self.live_sun_azimuth = QDoubleSpinBox()
+        self.live_sun_azimuth.setRange(0.0, 360.0)
+        self.live_sun_azimuth.setSingleStep(15.0)
+        self.live_sun_azimuth.setDecimals(0)
+        self.live_sun_azimuth.setSuffix("° az")
+        self.live_sun_azimuth.setValue(315.0)
+        self.live_sun_azimuth.valueChanged.connect(self._on_atmosphere_changed)
+        self.live_sun_altitude = QDoubleSpinBox()
+        self.live_sun_altitude.setRange(10.0, 85.0)
+        self.live_sun_altitude.setSingleStep(5.0)
+        self.live_sun_altitude.setDecimals(0)
+        self.live_sun_altitude.setSuffix("° alt")
+        self.live_sun_altitude.setValue(45.0)
+        self.live_sun_altitude.valueChanged.connect(self._on_atmosphere_changed)
+        sun_row.addWidget(self.live_sun_azimuth, 1)
+        sun_row.addWidget(self.live_sun_altitude, 1)
+        scene_form.addRow("Sun angle:", sun_row)
+
+        self.export_png_btn = QPushButton("Save 2D Map PNG…")
+        self.export_png_btn.setToolTip("Export a high-resolution PNG snapshot of the current styled map canvas.")
+        self.export_png_btn.clicked.connect(self._export_map_png)
+        scene_form.addRow("Export:", self.export_png_btn)
+
         layout.addWidget(scene_box)
 
         self.layer_3d_box = QGroupBox("3D Layer Visibility")
@@ -714,6 +857,21 @@ class PluginDockWidget(QDockWidget):
         self.building_opacity.setValue(100)
         self.building_opacity.valueChanged.connect(self._apply_advanced_changes)
         form.addRow("Opacity:", self.building_opacity)
+
+        self.live_cb_shade_variation = QCheckBox("Per-building shade variation")
+        self.live_cb_shade_variation.setChecked(True)
+        self.live_cb_shade_variation.toggled.connect(self._apply_changes)
+        form.addRow("", self.live_cb_shade_variation)
+
+        self.live_cb_shadow_2d = QCheckBox("2D sun drop-shadow")
+        self.live_cb_shadow_2d.setChecked(True)
+        self.live_cb_shadow_2d.toggled.connect(self._apply_changes)
+        form.addRow("", self.live_cb_shadow_2d)
+
+        self.live_cb_mode_25d = QCheckBox("2.5D axonometric depth (2D map)")
+        self.live_cb_mode_25d.setChecked(False)
+        self.live_cb_mode_25d.toggled.connect(self._apply_changes)
+        form.addRow("", self.live_cb_mode_25d)
 
         self.live_cb_labels = QCheckBox("Show name labels")
         self.live_cb_labels.toggled.connect(self._apply_changes)
@@ -796,7 +954,59 @@ class PluginDockWidget(QDockWidget):
         else:
             self.set_status("Cache already empty.")
 
+    def set_running(self, running: bool):
+        """Toggle the Run and Cancel buttons while an OSM download is in progress."""
+        if not running:
+            self._cancel_requested = False
+        with contextlib.suppress(Exception):
+            self.run_btn.setEnabled(not running)
+            self.cancel_btn.setVisible(bool(running))
+            self.cancel_btn.setEnabled(bool(running))
+
+    def is_cancelled(self) -> bool:
+        return bool(self._cancel_requested)
+
+    def _on_cancel_clicked(self):
+        self._cancel_requested = True
+        with contextlib.suppress(Exception):
+            self.cancel_btn.setEnabled(False)
+        self.set_status("Cancelling download…", error=True)
+
+    def _update_canvas_area_readout(self):
+        if not hasattr(self, "canvas_area_label"):
+            return
+        with contextlib.suppress(Exception):
+            from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform
+            from .osm_download import bbox_area_km2
+
+            canvas = self.iface.mapCanvas()
+            rect = canvas.extent()
+            if rect.isEmpty():
+                self.canvas_area_label.setText("Canvas extent: —")
+                return
+            src_crs = canvas.mapSettings().destinationCrs()
+            wgs_crs = QgsCoordinateReferenceSystem.fromEpsgId(4326)
+            wgs_rect = QgsCoordinateTransform(src_crs, wgs_crs, QgsProject.instance()).transformBoundingBox(rect)
+            area_km2 = bbox_area_km2(
+                wgs_rect.yMinimum(), wgs_rect.xMinimum(),
+                wgs_rect.yMaximum(), wgs_rect.xMaximum(),
+            )
+            max_val = self.max_km2.value()
+            if self.area_source.currentData() == "canvas" and area_km2 > max_val:
+                self.canvas_area_label.setStyleSheet(
+                    "color:#9a5b13;font-size:10px;font-weight:600;background:transparent;"
+                )
+                self.canvas_area_label.setText(
+                    f"Canvas: ≈ {area_km2:,.2f} km² (exceeds Max area; center {max_val:g} km² will be clipped)"
+                )
+            else:
+                self.canvas_area_label.setStyleSheet(
+                    "color:#2f756f;font-size:10px;font-weight:600;background:transparent;"
+                )
+                self.canvas_area_label.setText(f"Canvas extent: ≈ {area_km2:,.2f} km²")
+
     def _emit_run(self):
+        self._cancel_requested = False
         p = {
             "area_source": self.area_source.currentData(),
             "shape": self.shape.currentData(),
@@ -807,6 +1017,11 @@ class PluginDockWidget(QDockWidget):
             "theme": self.theme_combo.currentData(),
             "building_color": self.building_color.currentData(),
             "classification": self.classification.currentData(),
+            "shade_variation": self.cb_shade_variation.isChecked(),
+            "shadow_2d": self.cb_shadow_2d.isChecked(),
+            "mode_25d": self.cb_mode_25d.isChecked(),
+            "edl_enabled": self.cb_edl.isChecked(),
+            "shadows_3d": self.cb_shadows_3d.isChecked(),
             "want_base": self.cb_base.isChecked(),
             "want_roads": self.cb_roads.isChecked(),
             "want_water": self.cb_water.isChecked(),
@@ -815,6 +1030,8 @@ class PluginDockWidget(QDockWidget):
             "want_furniture": self.cb_furniture.isChecked(),
             "want_labels": self.cb_labels.isChecked(),
             "basemap": self.basemap.currentLayer(),
+            "terrain_layer": self.terrain_dem.currentLayer(),
+            "terrain_vertical_scale": self.terrain_scale.value(),
             "open_3d": self.cb_open3d.isChecked(),
             "map_resolution": self.map_resolution.currentData(),
             "save_gpkg": self.cb_save_gpkg.isChecked(),
@@ -868,9 +1085,21 @@ class PluginDockWidget(QDockWidget):
                 self.live_classification.setCurrentIndex(lclidx)
         self.cb_save_gpkg.setChecked(_truthy(s.value(f"{_S}/save_gpkg"), False))
         self.cb_use_cache.setChecked(_truthy(s.value(f"{_S}/use_cache"), True))
+        self.cb_shade_variation.setChecked(_truthy(s.value(f"{_S}/shade_variation"), True))
+        self.live_cb_shade_variation.setChecked(_truthy(s.value(f"{_S}/shade_variation"), True))
+        self.cb_shadow_2d.setChecked(_truthy(s.value(f"{_S}/shadow_2d"), True))
+        self.live_cb_shadow_2d.setChecked(_truthy(s.value(f"{_S}/shadow_2d"), True))
+        self.cb_mode_25d.setChecked(_truthy(s.value(f"{_S}/mode_25d"), False))
+        self.live_cb_mode_25d.setChecked(_truthy(s.value(f"{_S}/mode_25d"), False))
+        self.cb_edl.setChecked(_truthy(s.value(f"{_S}/edl_enabled"), True))
+        self.live_cb_edl.setChecked(_truthy(s.value(f"{_S}/edl_enabled"), True))
+        self.cb_shadows_3d.setChecked(_truthy(s.value(f"{_S}/shadows_3d"), True))
+        self.live_cb_shadows_3d.setChecked(_truthy(s.value(f"{_S}/shadows_3d"), True))
         with contextlib.suppress(TypeError, ValueError):
             self.height_scale.setValue(float(s.value(f"{_S}/height_scale", 1.0)))
             self.live_height_scale.setValue(float(s.value(f"{_S}/height_scale", 1.0)))
+            self.terrain_scale.setValue(float(s.value(f"{_S}/terrain_vertical_scale", 1.0)))
+            self.live_terrain_scale.setValue(float(s.value(f"{_S}/terrain_vertical_scale", 1.0)))
         self.cb_extrude.setEnabled(self.cb_buildings.isChecked())
         self.height_scale.setEnabled(self.cb_extrude.isChecked())
         self._update_download_classification_enabled()
@@ -900,6 +1129,12 @@ class PluginDockWidget(QDockWidget):
         s.setValue(f"{_S}/map_resolution", p["map_resolution"])
         s.setValue(f"{_S}/classification", p["classification"])
         s.setValue(f"{_S}/height_scale", p["height_scale"])
+        s.setValue(f"{_S}/shade_variation", p.get("shade_variation", True))
+        s.setValue(f"{_S}/shadow_2d", p.get("shadow_2d", True))
+        s.setValue(f"{_S}/mode_25d", p.get("mode_25d", False))
+        s.setValue(f"{_S}/edl_enabled", p.get("edl_enabled", True))
+        s.setValue(f"{_S}/shadows_3d", p.get("shadows_3d", True))
+        s.setValue(f"{_S}/terrain_vertical_scale", p.get("terrain_vertical_scale", 1.0))
         s.setValue(f"{_S}/save_gpkg", p["save_gpkg"])
         s.setValue(f"{_S}/use_cache", p["use_cache"])
 
@@ -915,9 +1150,16 @@ class PluginDockWidget(QDockWidget):
             self.live_height_scale,
             self.live_building_color,
             self.live_classification,
+            self.live_cb_shade_variation,
+            self.live_cb_shadow_2d,
+            self.live_cb_mode_25d,
             self.live_cb_labels,
             self.live_cb_base,
             self.live_map_resolution,
+            self.live_terrain_dem,
+            self.live_terrain_scale,
+            self.live_cb_edl,
+            self.live_cb_shadows_3d,
         )
         for widget in widgets:
             widget.blockSignals(True)
@@ -930,9 +1172,17 @@ class PluginDockWidget(QDockWidget):
                     p.get("building_color", styling.BUILDING_COLOR_FUNCTION),
                 )
                 self._set_combo_data(self.live_classification, p.get("classification", "continuous"))
+                self.live_cb_shade_variation.setChecked(bool(p.get("shade_variation", True)))
+                self.live_cb_shadow_2d.setChecked(bool(p.get("shadow_2d", True)))
+                self.live_cb_mode_25d.setChecked(bool(p.get("mode_25d", False)))
                 self.live_cb_labels.setChecked(bool(p.get("want_labels", False)))
                 self.live_cb_base.setChecked(bool(p.get("want_base", True)))
                 self._set_combo_data(self.live_map_resolution, p.get("map_resolution", 1024))
+                self.live_cb_edl.setChecked(bool(p.get("edl_enabled", True)))
+                self.live_cb_shadows_3d.setChecked(bool(p.get("shadows_3d", True)))
+                self.live_terrain_scale.setValue(float(p.get("terrain_vertical_scale", 1.0)))
+                with contextlib.suppress(Exception):
+                    self.live_terrain_dem.setCurrentLayer(p.get("terrain_layer"))
         finally:
             for widget in widgets:
                 widget.blockSignals(False)
@@ -1247,6 +1497,14 @@ class PluginDockWidget(QDockWidget):
                     layers["waterlines"] = layer
                 elif name == "OSM Bike lanes":
                     layers["bikelanes"] = layer
+                elif name == "OSM Bus stops":
+                    layers["busstops"] = layer
+                elif name == "OSM Benches":
+                    layers["benches"] = layer
+                elif name == "OSM Street lights":
+                    layers["lights"] = layer
+                elif name == "OSM Trash bins":
+                    layers["trashbins"] = layer
         return layers
 
     def _paint_preview(self, frame, stops):
@@ -1337,6 +1595,9 @@ class PluginDockWidget(QDockWidget):
             color_mode = self.live_building_color.currentData()
             classification = self.live_classification.currentData()
             scale = self.live_height_scale.value()
+            shade_var = self.live_cb_shade_variation.isChecked()
+            shadow_2d = self.live_cb_shadow_2d.isChecked()
+            mode_25d = self.live_cb_mode_25d.isChecked()
             want_labels = self.live_cb_labels.isChecked()
             want_base = self.live_cb_base.isChecked()
 
@@ -1345,7 +1606,13 @@ class PluginDockWidget(QDockWidget):
                 buildings.setCustomProperty("osm_quick_3d/building_color", color_mode)
                 buildings.setCustomProperty("osm_quick_3d/classification", classification)
                 buildings.setCustomProperty("osm_quick_3d/height_scale", scale)
-                styling.style_buildings(buildings, color_mode, classification=classification, theme=theme_key)
+                buildings.setCustomProperty("osm_quick_3d/shade_variation", shade_var)
+                buildings.setCustomProperty("osm_quick_3d/shadow_2d", shadow_2d)
+                buildings.setCustomProperty("osm_quick_3d/mode_25d", mode_25d)
+                styling.style_buildings(
+                    buildings, color_mode, classification=classification, theme=theme_key,
+                    shade_variation=shade_var, shadow_2d=shadow_2d, mode_25d=mode_25d,
+                )
                 native3d.apply_building_extrusion(
                     buildings,
                     color_hex=styling.building_base_color(color_mode, theme=theme_key),
@@ -1355,6 +1622,7 @@ class PluginDockWidget(QDockWidget):
                     color_mode=color_mode,
                     classification=classification,
                     theme=theme_key,
+                    shade_variation=shade_var,
                 )
                 if want_labels:
                     styling.label_by_name(buildings, size=8.0)
@@ -1362,6 +1630,12 @@ class PluginDockWidget(QDockWidget):
                     buildings.setLabeling(None)
                     buildings.setLabelsEnabled(False)
                     buildings.triggerRepaint()
+
+            for furn_role in ("busstops", "benches", "lights", "trashbins"):
+                furn_layer = layers.get(furn_role)
+                if furn_layer:
+                    styling.style_furniture(furn_layer, role=furn_role, theme=theme_key)
+                    native3d.apply_furniture_3d(furn_layer, role=furn_role)
 
             if roads:
                 if want_labels:
@@ -1440,11 +1714,32 @@ class PluginDockWidget(QDockWidget):
                 trees_color = self.trees_color.color().name()
                 styling.set_layer_color(trees, trees_color)
                 styling.set_trees_size(trees, self.trees_size.value())
-                native3d.apply_tree_3d(trees, color_hex=trees_color)
+                native3d.apply_tree_3d(
+                    trees, color_hex=trees_color, height_scale=self.live_height_scale.value()
+                )
         finally:
             canvas.freeze(False)
             canvas.refresh()
         self._refresh_3d_view(auto=True)
+
+    def _on_atmosphere_changed(self):
+        self._refresh_3d_view(auto=True)
+
+    def _export_map_png(self):
+        """Save a high-resolution PNG snapshot of the current styled 2D map canvas."""
+        try:
+            from qgis.PyQt.QtWidgets import QFileDialog
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Save 2D Map Snapshot", "osm_quick_3d_map.png", "PNG image (*.png)"
+            )
+            if not path:
+                return
+            if not path.lower().endswith(".png"):
+                path += ".png"
+            self.iface.mapCanvas().saveAsImage(path)
+            self.set_status(f"Saved map snapshot to {os.path.basename(path)}.")
+        except Exception as exc:
+            self.set_status(f"Could not save PNG: {exc}", error=True)
 
     def _apply_resolution(self):
         res = self.live_map_resolution.currentData()
@@ -1493,6 +1788,17 @@ class PluginDockWidget(QDockWidget):
     def _current_3d_layers(self):
         return [layer for layer in self._group_layers() if self._layer_3d_visible(layer)]
 
+    def _atmosphere_kwargs(self) -> dict:
+        return {
+            "terrain_layer": self.live_terrain_dem.currentLayer() if hasattr(self, "live_terrain_dem") else None,
+            "terrain_vertical_scale": self.live_terrain_scale.value() if hasattr(self, "live_terrain_scale") else 1.0,
+            "edl_enabled": self.live_cb_edl.isChecked() if hasattr(self, "live_cb_edl") else True,
+            "shadows_enabled": self.live_cb_shadows_3d.isChecked() if hasattr(self, "live_cb_shadows_3d") else True,
+            "sun_azimuth": self.live_sun_azimuth.value() if hasattr(self, "live_sun_azimuth") else 315.0,
+            "sun_altitude": self.live_sun_altitude.value() if hasattr(self, "live_sun_altitude") else 45.0,
+            "ambient_occlusion": self.live_cb_ao.isChecked() if hasattr(self, "live_cb_ao") else True,
+        }
+
     def _refresh_3d_view(self, auto=False):
         canvas = self._managed_canvas or native3d.find_owned_3d_map_canvas(
             self.iface, self._managed_canvas_name
@@ -1507,6 +1813,7 @@ class PluginDockWidget(QDockWidget):
             self._current_bg_color(),
             layers=self._current_3d_layers(),
             clip_geometry=self._scene_clip_geometry,
+            **self._atmosphere_kwargs(),
         )
         self._update_scene_panel()
         return ok
@@ -1542,6 +1849,7 @@ class PluginDockWidget(QDockWidget):
                 name=self._managed_canvas_name,
                 layers=layers,
                 clip_geometry=self._scene_clip_geometry,
+                **self._atmosphere_kwargs(),
             )
         if canvas is None:
             if not auto:
@@ -1558,6 +1866,7 @@ class PluginDockWidget(QDockWidget):
             self._current_bg_color(),
             layers=layers,
             clip_geometry=self._scene_clip_geometry,
+            **self._atmosphere_kwargs(),
         )
         self.tab_widget.setCurrentWidget(self.live_tab)
         if not auto:

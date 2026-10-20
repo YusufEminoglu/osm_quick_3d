@@ -63,6 +63,10 @@ class OsmDownloadError(RuntimeError):
     pass
 
 
+class OsmCancelledError(OsmDownloadError):
+    pass
+
+
 def _cache_dir() -> str:
     path = os.path.join(tempfile.gettempdir(), "osm_quick_3d_cache")
     with contextlib.suppress(OSError):
@@ -201,7 +205,10 @@ def _overpass_query(min_lat: float, min_lon: float, max_lat: float, max_lon: flo
         if datasets is None else datasets
     )
     groups = {
-        "buildings": ('way["building"]', 'relation["building"]'),
+        "buildings": (
+            'way["building"]', 'way["building:part"]',
+            'relation["building"]', 'relation["building:part"]',
+        ),
         "roads": ('way["highway"]',),
         "water": (
             'way["waterway"~"river|stream|canal|drain|ditch|riverbank"]',
@@ -329,7 +336,11 @@ def _fetch_one(endpoint: str, query: str, timeout_s: int):
         code = client.post(request, body, False, None)
     except Exception as exc:
         return None, str(exc).strip() or "network request exception", True
-    if code != QgsBlockingNetworkRequest.NoError:
+    no_error = getattr(
+        getattr(QgsBlockingNetworkRequest, "ErrorCode", QgsBlockingNetworkRequest),
+        "NoError",
+    )
+    if code != no_error:
         detail = "network request failed"
         error_message = getattr(client, "errorMessage", None)
         if callable(error_message):
@@ -383,7 +394,7 @@ def _fetch_query(query: str, timeout_s: int, feedback, use_cache: bool) -> dict:
 
 def fetch_overpass(min_lat: float, min_lon: float, max_lat: float, max_lon: float,
                    timeout_s: int = DEFAULT_TIMEOUT_S, feedback=None,
-                   use_cache: bool = True, datasets=None) -> dict:
+                   use_cache: bool = True, datasets=None, cancel_check=None) -> dict:
     """Fetch one or more bounded tiles, cache them, and merge by OSM identity."""
     tiles = tile_bbox(min_lat, min_lon, max_lat, max_lon)
     queries = tuple(_overpass_query(*tile, datasets=datasets) for tile in tiles)
@@ -393,10 +404,14 @@ def fetch_overpass(min_lat: float, min_lon: float, max_lat: float, max_lon: floa
     failed_tiles = []
     failure_details = []
     for index, query in enumerate(queries):
+        if cancel_check is not None and cancel_check():
+            raise OsmCancelledError("Download cancelled by user.")
         if feedback and len(queries) > 1:
             feedback(f"Downloading OSM tile {index + 1}/{len(queries)} ...")
         try:
             payloads.append(_fetch_query(query, timeout_s, feedback, use_cache))
+        except OsmCancelledError:
+            raise
         except OsmDownloadError as exc:
             if len(queries) == 1:
                 raise
@@ -404,6 +419,8 @@ def fetch_overpass(min_lat: float, min_lon: float, max_lat: float, max_lon: floa
             failure_details.append(str(exc))
         if (index + 1 < len(queries)
                 and (not use_cache or _read_cache(queries[index + 1]) is None)):
+            if cancel_check is not None and cancel_check():
+                raise OsmCancelledError("Download cancelled by user.")
             time.sleep(TILE_PAUSE_S)
     if not payloads:
         raise OsmDownloadError(
@@ -486,11 +503,25 @@ def _building_levels(tags: dict) -> int:
         if h is not None and h > 0:
             base = max(1, int(round(h / 3.0)))
     if base is None:
-        return _DEFAULT_FLOORS_BY_OSM.get((tags.get("building") or "").lower(), 3)
+        btype = (tags.get("building") or tags.get("building:part") or "").lower()
+        return _DEFAULT_FLOORS_BY_OSM.get(btype, 3)
     roof = _parse_osm_number(tags.get("roof:levels"))
     if roof:
         base += max(0, int(round(roof)))
     return max(1, base)
+
+
+def _building_min_height(tags: dict) -> float:
+    """Base elevation offset (m above ground) from ``min_height`` or ``building:min_level``."""
+    for key in ("min_height", "building:min_height"):
+        val = _parse_osm_number(tags.get(key))
+        if val is not None and val > 0:
+            return round(float(val), 1)
+    for key in ("building:min_level", "min_level"):
+        lvl = _parse_osm_number(tags.get(key))
+        if lvl is not None and lvl > 0:
+            return round(float(lvl) * 3.0, 1)
+    return 0.0
 
 
 # Default carriageway/channel width (m) per OSM waterway class, used when the way
@@ -804,7 +835,7 @@ def _valid_clip_boundary(area_utm: QgsGeometry) -> QgsGeometry:
 # Main download + clip
 # --------------------------------------------------------------------------
 def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
-                          use_cache: bool = True, datasets=None) -> dict:
+                          use_cache: bool = True, datasets=None, cancel_check=None) -> dict:
     """Fetch OSM for the boundary's bbox, reproject to UTM, clip to the boundary.
 
     ``area_utm`` is the study-boundary polygon (circle, rounded rectangle,
@@ -828,7 +859,7 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
 
     payload = fetch_overpass(
         min_lat, min_lon, max_lat, max_lon, feedback=feedback,
-        use_cache=use_cache, datasets=datasets,
+        use_cache=use_cache, datasets=datasets, cancel_check=cancel_check,
     )
     elements = payload.get("elements") or []
     if not elements:
@@ -843,6 +874,7 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
         "OSM Buildings", "MultiPolygon", epsg_dest,
         [("osm_id", QVariant.String), ("building", QVariant.String),
          ("building_levels", QVariant.Int), ("height", QVariant.Double),
+         ("min_height", QVariant.Double),
          ("footprint_m2", QVariant.Double), ("gfa_m2", QVariant.Double),
          ("name", QVariant.String)],
     )
@@ -931,7 +963,9 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
         return clipped
 
     scattered_trees = 0
-    for element in elements:
+    for elem_idx, element in enumerate(elements):
+        if cancel_check is not None and elem_idx % 250 == 0 and cancel_check():
+            raise OsmCancelledError("Download cancelled by user.")
         etype = element.get("type")
         tags = element.get("tags") or {}
 
@@ -990,7 +1024,7 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
                 counts["skipped"] += 1
             continue
 
-        if etype in ("way", "relation") and tags.get("building"):
+        if etype in ("way", "relation") and (tags.get("building") or tags.get("building:part")):
             base = _element_polygon(element)
             if not base:
                 continue
@@ -999,19 +1033,25 @@ def download_osm_for_area(area_utm: QgsGeometry, epsg_dest: int, feedback=None,
                 counts["skipped"] += 1
                 continue
             height_val = _parse_osm_number(tags.get("height"))
+            min_height_val = _building_min_height(tags)
             levels = _building_levels(tags)
+            is_part_only = bool(tags.get("building:part")) and not bool(tags.get("building"))
             try:
-                footprint = round(clipped.area(), 1)
+                footprint = 0.0 if is_part_only else round(clipped.area(), 1)
             except Exception:
                 footprint = None
-            gfa = round(footprint * levels, 1) if footprint else None
+            gfa = round(footprint * levels, 1) if footprint else (0.0 if is_part_only else None)
+            b_tag = _tag(tags, "building") or _tag(tags, "building:part")
+            if b_tag == "yes" and is_part_only:
+                b_tag = "part"
             feat = QgsFeature()
             feat.setGeometry(clipped)
             feat.setAttributes([
                 str(element.get("id", "")),
-                _tag(tags, "building"),
+                b_tag,
                 levels,
                 round(height_val, 1) if height_val else None,
+                min_height_val,
                 footprint,
                 gfa,
                 tags.get("name", ""),

@@ -362,13 +362,15 @@ BUILDING_COLOR_FUNCTION = "function"
 
 # (light, deep) endpoints of each soft tinted ramp.
 _BUILDING_RAMPS = {
-    "height": ("#e2e8ee", "#56657d"),     # cool neutral, light steel -> slate
-    "soft_gray": ("#e8e9e8", "#6e746f"),  # tinted gray
-    "soft_warm": ("#ede2d4", "#8a7460"),  # tinted warm
-    "teal": ("#dbeae7", "#3c7c77"),       # soft teal
+    "height": ("#e2e8ee", "#56657d"),       # cool neutral, light steel -> slate
+    "soft_gray": ("#e8e9e8", "#6e746f"),    # tinted gray
+    "soft_warm": ("#ede2d4", "#8a7460"),    # tinted warm
+    "teal": ("#dbeae7", "#3c7c77"),         # soft teal
     "soft_salmon": ("#f1ded7", "#b9776a"),  # soft salmon -> terracotta
     "soft_purple": ("#e4dded", "#6f5c86"),  # soft lilac -> deep purple
     "soft_sand": ("#ece6d6", "#9a8a63"),    # soft sand -> slate-sand
+    "copper_gold": ("#f5ead8", "#8c5828"),  # architectural bronze -> copper
+    "nordic_ice": ("#e3eff6", "#2c5d7c"),   # glacier mist -> deep fjord blue
 }
 
 # (value, label) for the dialog combo.
@@ -381,6 +383,8 @@ BUILDING_COLOR_MODES = (
     ("soft_salmon", "Soft salmon"),
     ("soft_purple", "Soft purple"),
     ("soft_sand", "Soft sand"),
+    ("copper_gold", "Copper & bronze"),
+    ("nordic_ice", "Nordic glacier"),
 )
 
 # Per-feature extrusion/colour height, in metres (tagged height, else floors*3).
@@ -607,28 +611,98 @@ def _categorized(expression, mapping_to_symbol):
 
 
 # ── per-layer styling ───────────────────────────────────────────────────────
-def style_buildings(layer, mode=BUILDING_COLOR_FUNCTION, classification="continuous", theme="default"):
+def _shade_variant_expression(base_hex: str) -> str:
+    """Deterministic per-building shade variation expression around ``base_hex``."""
+    darker_hex = _scale_hex(base_hex, 0.90)
+    lighter_hex = _scale_hex(base_hex, 1.08)
+    bucket = 'coalesce(to_int(right("osm_id", 1)), 0) % 3'
+    return (
+        f"CASE WHEN {bucket} = 1 THEN '{darker_hex}'"
+        f" WHEN {bucket} = 2 THEN '{lighter_hex}'"
+        f" ELSE '{base_hex}' END"
+    )
+
+
+def apply_building_2d_effect(layer, shadow_2d: bool = False, mode_25d: bool = False):
+    """Attach a 2D sun drop-shadow or 2.5D axonometric depth effect to ``layer``."""
+    if layer is None:
+        return False
+    renderer = layer.renderer()
+    if renderer is None:
+        return False
+    with contextlib.suppress(Exception):
+        from qgis.core import QgsDrawSourceEffect, QgsDropShadowEffect, QgsEffectStack
+        from qgis.PyQt.QtGui import QColor
+
+        if not shadow_2d and not mode_25d:
+            renderer.setPaintEffect(None)
+            layer.triggerRepaint()
+            return True
+
+        stack = QgsEffectStack()
+        stack.setEnabled(True)
+        if mode_25d:
+            # Crisp isometric plinth shadow + subtle ambient shadow
+            plinth = QgsDropShadowEffect()
+            plinth.setEnabled(True)
+            plinth.setOffsetAngle(135)
+            plinth.setOffsetDistance(1.8)
+            plinth.setBlurLevel(0.4)
+            plinth.setOpacity(0.55)
+            plinth.setColor(QColor("#2c3138"))
+            stack.appendEffect(plinth)
+        if shadow_2d or mode_25d:
+            shadow = QgsDropShadowEffect()
+            shadow.setEnabled(True)
+            shadow.setOffsetAngle(135)
+            shadow.setOffsetDistance(2.4 if mode_25d else 1.5)
+            shadow.setBlurLevel(2.6 if mode_25d else 2.0)
+            shadow.setOpacity(0.36 if mode_25d else 0.40)
+            shadow.setColor(QColor("#1a1e24"))
+            stack.appendEffect(shadow)
+        source = QgsDrawSourceEffect()
+        source.setEnabled(True)
+        stack.appendEffect(source)
+        renderer.setPaintEffect(stack)
+        layer.triggerRepaint()
+        return True
+    return False
+
+
+def style_buildings(layer, mode=BUILDING_COLOR_FUNCTION, classification="continuous",
+                    theme="default", shade_variation: bool = True,
+                    shadow_2d: bool = False, mode_25d: bool = False):
     """Style buildings by ``mode``: function categories or a soft height ramp.
 
     Ramp modes use one fill symbol whose colour is data-defined by the same
     expression the 3D massing uses, so 2D and 3D stay identical.
     """
+    prop_fill = getattr(
+        getattr(QgsSymbolLayer, "Property", QgsSymbolLayer),
+        "PropertyFillColor",
+        None,
+    )
     if mode in _BUILDING_RAMPS or mode == "height":
         symbol = _fill("#cfd6dd")
         expr = building_color_expression(mode, classification=classification, layer=layer, theme=theme)
-        with contextlib.suppress(Exception):
-            prop_fill = getattr(
-                getattr(QgsSymbolLayer, "Property", QgsSymbolLayer),
-                "PropertyFillColor",
-            )
-            symbol.symbolLayer(0).setDataDefinedProperty(
-                prop_fill, QgsProperty.fromExpression(expr))
+        if prop_fill is not None:
+            with contextlib.suppress(Exception):
+                symbol.symbolLayer(0).setDataDefinedProperty(
+                    prop_fill, QgsProperty.fromExpression(expr))
         layer.setRenderer(QgsSingleSymbolRenderer(symbol))
     else:
         t = THEMES.get(theme, THEMES["default"])
         theme_building_colors = t.get("building_colors", BUILDING_COLORS)
-        mapping = {k: _fill(v) for k, v in theme_building_colors.items()}
+        mapping = {}
+        for k, v in theme_building_colors.items():
+            sym = _fill(v, outline=_scale_hex(v, 0.68), outline_w=0.18 if mode_25d else 0.16)
+            if shade_variation and prop_fill is not None:
+                with contextlib.suppress(Exception):
+                    sym.symbolLayer(0).setDataDefinedProperty(
+                        prop_fill, QgsProperty.fromExpression(_shade_variant_expression(v)))
+            mapping[k] = sym
         layer.setRenderer(_categorized(BUILDING_CLASS_EXPR, mapping))
+    apply_building_2d_effect(layer, shadow_2d=shadow_2d, mode_25d=mode_25d)
     layer.triggerRepaint()
 
 
@@ -765,6 +839,30 @@ def style_base(layer, mode=BUILDING_COLOR_FUNCTION, transparent=False, bg_color_
         fill = _scale_hex(slab, 1.6)        # light tint of the slab colour
         symbol = _fill(fill, outline=outline, outline_w=0.2)
         layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+    layer.triggerRepaint()
+
+
+FURNITURE_STYLE = {
+    "busstops": ("#2b7bba", 2.3, "#ffffff"),
+    "lights": ("#f0b429", 1.8, "#7c5808"),
+    "benches": ("#a66e38", 1.6, "#4d3116"),
+    "trashbins": ("#64748b", 1.5, "#334155"),
+}
+
+
+def style_furniture(layer, role: str = "benches", theme: str = "default"):
+    """Theme-aware 2D styling for street furniture point layers."""
+    color_hex, size, outline = FURNITURE_STYLE.get(role, ("#b9897a", 1.8, "#5f574d"))
+    if theme in ("dark", "nightprint", "vapor"):
+        if role == "lights":
+            color_hex, outline = "#ffd166", "#ca8a04"
+        elif role == "busstops":
+            color_hex, outline = "#38bdf8", "#0284c7"
+        else:
+            color_hex = _scale_hex(color_hex, 1.25)
+    elif theme == "blueprint":
+        color_hex, outline = "#bae6fd", "#0c4a6e"
+    layer.setRenderer(QgsSingleSymbolRenderer(_marker(color_hex, size, outline=outline)))
     layer.triggerRepaint()
 
 

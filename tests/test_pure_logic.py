@@ -382,7 +382,39 @@ def test_new_features():
     check("parking is in green colors", "parking" in styling.GREEN_COLORS)
     check("pedestrian is in green colors", "pedestrian" in styling.GREEN_COLORS)
     check("parking in class expression", "parking" in styling.GREEN_CLASS_EXPR)
-    check("pedestrian in class expression", "pedestrian" in styling.GREEN_CLASS_EXPR)
+    check("pedestrian in class expression", "pedestrian in class expression" and "pedestrian" in styling.GREEN_CLASS_EXPR)
+
+
+def test_v051_enhancements():
+    print("v0.51 enhancements (building:part, min_height, shade variation, 3D sun, cancel)")
+    q = osm._overpass_query(41.0, 29.0, 41.01, 29.01, datasets=("buildings",))
+    check("building:part queried", '["building:part"]' in q)
+    check("min_height parsed", osm._building_min_height({"min_height": "6.5 m"}) == 6.5)
+    check("min_level fallback * 3", osm._building_min_height({"building:min_level": "2"}) == 6.0)
+    check("absent min_height -> 0.0", osm._building_min_height({}) == 0.0)
+    check("building:part type fallback", osm._building_levels({"building:part": "office"}) == 5)
+
+    # New ramps & shade variation
+    check("copper_gold ramp exists", "copper_gold" in styling._BUILDING_RAMPS)
+    check("nordic_ice ramp exists", "nordic_ice" in styling._BUILDING_RAMPS)
+    shade_expr = styling._shade_variant_expression("#d8cfc4")
+    check("shade expression uses osm_id bucket", '"osm_id"' in shade_expr and "CASE" in shade_expr)
+    check("furniture styles defined", set(styling.FURNITURE_STYLE) == {"busstops", "lights", "benches", "trashbins"})
+
+    # 3D base height & prism height expressions + sun direction
+    check("base height expr uses min_height", "min_height" in native3d._base_height_expression(1.0))
+    check("base height expr scales", "* 2" in native3d._base_height_expression(2.0))
+    check("prism height subtracts min_height", "min_height" in native3d._prism_extrusion_expression(1.0))
+    dx, dy, dz = native3d._sun_direction_vector(315.0, 45.0)
+    check("sun vector points downward", dz < 0 and abs(dx * dx + dy * dy + dz * dz - 1.0) < 1e-6)
+
+    # Cancel check raises OsmCancelledError
+    try:
+        osm.fetch_overpass(41.0, 29.0, 41.01, 29.01, cancel_check=lambda: True)
+        cancelled = False
+    except osm.OsmCancelledError:
+        cancelled = True
+    check("cancel_check raises OsmCancelledError", cancelled)
 
 
 def main():
@@ -394,7 +426,8 @@ def main():
                  test_clear_cache,
                  test_shape_and_base_constants, test_themes,
                  test_geometry_transform_result_helper,
-                 test_new_features):
+                 test_new_features,
+                 test_v051_enhancements):
         test()
     print()
     if _failures:

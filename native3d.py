@@ -18,8 +18,14 @@ falls back to a "open a 3D Map View yourself" hint.
 from __future__ import annotations
 
 import contextlib
+import math
 
 EXTRUSION_EXPRESSION = 'coalesce(to_real("height"), to_int("building_levels") * 3, 9)'
+BASE_HEIGHT_EXPRESSION = 'coalesce(to_real("min_height"), 0)'
+PRISM_HEIGHT_EXPRESSION = (
+    'max(1.5, coalesce(to_real("height"), to_int("building_levels") * 3, 9)'
+    ' - coalesce(to_real("min_height"), 0))'
+)
 MANAGED_3D_CANVAS_NAME = "OSM Quick 3D Scene"
 
 
@@ -32,6 +38,28 @@ def _extrusion_expression(height_scale=1.0):
     if scale and abs(scale - 1.0) > 1e-6:
         return f"({EXTRUSION_EXPRESSION}) * {scale:g}"
     return EXTRUSION_EXPRESSION
+
+
+def _base_height_expression(height_scale=1.0):
+    """Per-feature base elevation offset (m above terrain) for ``min_height`` parts."""
+    try:
+        scale = float(height_scale)
+    except (TypeError, ValueError):
+        scale = 1.0
+    if scale and abs(scale - 1.0) > 1e-6:
+        return f"({BASE_HEIGHT_EXPRESSION}) * {scale:g}"
+    return BASE_HEIGHT_EXPRESSION
+
+
+def _prism_extrusion_expression(height_scale=1.0):
+    """Net prism height (total height minus min_height), scaled by ``height_scale``."""
+    try:
+        scale = float(height_scale)
+    except (TypeError, ValueError):
+        scale = 1.0
+    if scale and abs(scale - 1.0) > 1e-6:
+        return f"({PRISM_HEIGHT_EXPRESSION}) * {scale:g}"
+    return PRISM_HEIGHT_EXPRESSION
 
 
 def _make_material(color_hex):
@@ -127,11 +155,14 @@ def _apply_symbol_extrusion_properties(symbol, height_scale=1.0):
     with contextlib.suppress(Exception):
         from qgis.core import QgsProperty
         from qgis._3d import QgsPolygon3DSymbol
-        prop_key = getattr(QgsPolygon3DSymbol, "PropertyExtrusionHeight", None)
-        if prop_key is not None:
-            ddp = symbol.dataDefinedProperties()
-            ddp.setProperty(prop_key, QgsProperty.fromExpression(_extrusion_expression(height_scale)))
-            symbol.setDataDefinedProperties(ddp)
+        ddp = symbol.dataDefinedProperties()
+        prop_ext = getattr(QgsPolygon3DSymbol, "PropertyExtrusionHeight", None)
+        if prop_ext is not None:
+            ddp.setProperty(prop_ext, QgsProperty.fromExpression(_prism_extrusion_expression(height_scale)))
+        prop_base = getattr(QgsPolygon3DSymbol, "PropertyHeight", None)
+        if prop_base is not None:
+            ddp.setProperty(prop_base, QgsProperty.fromExpression(_base_height_expression(height_scale)))
+        symbol.setDataDefinedProperties(ddp)
     _clamp_to_terrain(symbol)
 
 
@@ -162,18 +193,21 @@ def _apply_single_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.
 
 
 def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color_expr=None,
-                             color_mode="function", classification="continuous", theme="default"):
+                             color_mode="function", classification="continuous", theme="default",
+                             shade_variation: bool = True):
     """Attach a 3D renderer that extrudes the building polygons.
 
     Uses QgsRuleBased3DRenderer to support robust, separate colors by function/height in QGIS LTR.
     """
     try:
         from qgis._3d import QgsRuleBased3DRenderer, QgsPolygon3DSymbol
-        from qgis.core import QgsProperty
     except Exception:
         return False
 
-    from . import styling
+    try:
+        from . import styling
+    except ImportError:
+        import styling
 
     def make_rule(symbol=None, filter_expr="", description="", is_else=False):
         """Create a rule across the slightly different PyQGIS 3D signatures."""
@@ -244,30 +278,35 @@ def apply_building_extrusion(layer, color_hex="#cac5bf", height_scale=1.0, color
 
     if color_mode == "function":
         theme_building_colors = t.get("building_colors", styling.BUILDING_COLORS)
+        categories = (
+            ("Residential", theme_building_colors["residential"],
+             "lower(\"building\") IN ('apartments','residential','house','detached','terrace','dormitory','bungalow','semidetached_house','hut')"),
+            ("Commercial", theme_building_colors["commercial"],
+             "lower(\"building\") IN ('commercial','retail','office','supermarket','kiosk','hotel')"),
+            ("Industrial", theme_building_colors["industrial"],
+             "lower(\"building\") IN ('industrial','warehouse','manufacture','hangar','factory')"),
+            ("Civic", theme_building_colors["civic"],
+             "lower(\"building\") IN ('school','university','college','kindergarten','hospital','clinic','public','civic','government','townhall')"),
+            ("Worship", theme_building_colors["worship"],
+             "lower(\"building\") IN ('church','mosque','temple','synagogue','cathedral','chapel')"),
+        )
+        bucket_expr = 'coalesce(to_int(right("osm_id", 1)), 0) % 3'
+        for label, base_col, filt in categories:
+            if shade_variation:
+                shades = (
+                    (0, base_col, f"{label}"),
+                    (1, styling._scale_hex(base_col, 0.89), f"{label} (deep)"),
+                    (2, styling._scale_hex(base_col, 1.09), f"{label} (light)"),
+                )
+                for rem, shade_col, desc in shades:
+                    sym = make_building_symbol(shade_col)
+                    append_rule(make_rule(sym, f"({filt}) AND ({bucket_expr} = {rem})", desc))
+            else:
+                sym = make_building_symbol(base_col)
+                append_rule(make_rule(sym, filt, label))
 
-        # Add rules for each function
-        # residential
-        res_sym = make_building_symbol(theme_building_colors["residential"])
-        append_rule(make_rule(res_sym, "lower(\"building\") IN ('apartments','residential','house','detached','terrace','dormitory','bungalow','semidetached_house','hut')", "Residential"))
-
-        # commercial
-        com_sym = make_building_symbol(theme_building_colors["commercial"])
-        append_rule(make_rule(com_sym, "lower(\"building\") IN ('commercial','retail','office','supermarket','kiosk','hotel')", "Commercial"))
-
-        # industrial
-        ind_sym = make_building_symbol(theme_building_colors["industrial"])
-        append_rule(make_rule(ind_sym, "lower(\"building\") IN ('industrial','warehouse','manufacture','hangar','factory')", "Industrial"))
-
-        # civic
-        civ_sym = make_building_symbol(theme_building_colors["civic"])
-        append_rule(make_rule(civ_sym, "lower(\"building\") IN ('school','university','college','kindergarten','hospital','clinic','public','civic','government','townhall')", "Civic"))
-
-        # worship
-        wor_sym = make_building_symbol(theme_building_colors["worship"])
-        append_rule(make_rule(wor_sym, "lower(\"building\") IN ('church','mosque','temple','synagogue','cathedral','chapel')", "Worship"))
-
-        # other
-        oth_sym = make_building_symbol(theme_building_colors["other"])
+        oth_col = theme_building_colors["other"]
+        oth_sym = make_building_symbol(oth_col)
         append_rule(make_rule(oth_sym, "", "Other", is_else=True))
 
     else:
@@ -401,50 +440,149 @@ def apply_base_slab(layer, depth=5.0, top_z=-0.15, color_hex="#5e7274"):
         return False
 
 
-def apply_tree_3d(layer, color_hex="#5f9e4c"):
-    """Render the tree points as simple 3D canopies (green spheres) on the terrain.
+def _make_point_3d_symbol(shape_name: str, shape_props: dict, color_hex: str, z_offset: float = 0.0,
+                          emissive: bool = False):
+    """Build a terrain-clamped QgsPoint3DSymbol with ``shape_name`` ('Sphere' or 'Cylinder')."""
+    try:
+        from qgis._3d import QgsPoint3DSymbol
+    except Exception:
+        return None
+    symbol = QgsPoint3DSymbol()
+    shape_enum = getattr(getattr(QgsPoint3DSymbol, "Shape", QgsPoint3DSymbol), shape_name, None)
+    if shape_enum is None:
+        shape_enum = getattr(QgsPoint3DSymbol, shape_name, None)
+    if shape_enum is not None:
+        with contextlib.suppress(Exception):
+            symbol.setShape(shape_enum)
+    with contextlib.suppress(Exception):
+        symbol.setShapeProperties(dict(shape_props))
+    _clamp_to_terrain(symbol)
+    material = _make_material(color_hex)
+    if material is not None:
+        if emissive:
+            with contextlib.suppress(Exception):
+                from qgis.PyQt.QtGui import QColor
+                material.setAmbient(QColor(color_hex))
+        for setter in ("setMaterialSettings", "setMaterial"):
+            fn = getattr(symbol, setter, None)
+            if fn is not None:
+                with contextlib.suppress(Exception):
+                    fn(material)
+                    break
+    if z_offset:
+        with contextlib.suppress(Exception):
+            from qgis.PyQt.QtGui import QMatrix4x4
+            transform = QMatrix4x4()
+            transform.translate(0.0, 0.0, float(z_offset))
+            symbol.setTransform(transform)
+    return symbol
 
-    Sized by the OSM ``height`` column when present (radius ≈ a third of crown
-    height) with a sensible default. Fully defensive: returns False on builds
-    without a usable 3D point symbol, leaving the 2D tree markers in place.
+
+def apply_tree_3d(layer, color_hex="#5f9e4c", height_scale: float = 1.0):
+    """Render tree points as height-tiered 3D trunks + canopies on the terrain.
+
+    Uses 3 height classes from the OSM ``height`` column (small < 5.5 m, medium
+    5.5–9 m, tall >= 9 m), each with a brown trunk cylinder and a green crown
+    sphere, scaled by ``height_scale``. Falls back to a single-symbol sphere
+    renderer when rule-based 3D point rules are unavailable.
     """
     try:
         from qgis._3d import QgsPoint3DSymbol, QgsVectorLayer3DRenderer
     except Exception:
         return False
 
-    symbol = QgsPoint3DSymbol()
+    try:
+        scale = max(0.25, float(height_scale or 1.0))
+    except (TypeError, ValueError):
+        scale = 1.0
 
-    shape = getattr(QgsPoint3DSymbol, "Sphere", None)
-    if shape is not None:
-        with contextlib.suppress(Exception):
-            symbol.setShape(shape)
-    # Crown radius from OSM height when available, else ~2.5 m; shapeProperties is
-    # a plain dict on every 3D-capable build that exposes QgsPoint3DSymbol.
+    # Try height-tiered rule-based 3D trees with trunk + canopy first.
     with contextlib.suppress(Exception):
-        symbol.setShapeProperties({"radius": 2.5})
+        from qgis._3d import QgsRuleBased3DRenderer
+        try:
+            from . import styling
+        except ImportError:
+            import styling
 
-    _clamp_to_terrain(symbol)
+        root_rule = QgsRuleBased3DRenderer.Rule(None)
+        h_expr = 'coalesce(to_real("height"), 6.0)'
+        tiers = (
+            ("Small tree", f"{h_expr} < 5.5", 1.8 * scale, 0.22 * scale, 1.8 * scale,
+             styling._scale_hex(color_hex, 1.08)),
+            ("Medium tree", f"{h_expr} >= 5.5 AND {h_expr} < 9.0", 2.5 * scale, 0.30 * scale, 2.5 * scale,
+             color_hex),
+            ("Tall tree", f"{h_expr} >= 9.0", 3.5 * scale, 0.38 * scale, 3.4 * scale,
+             styling._scale_hex(color_hex, 0.88)),
+        )
+        added = 0
+        for label, filt, crown_r, trunk_r, trunk_h, crown_col in tiers:
+            trunk_sym = _make_point_3d_symbol(
+                "Cylinder", {"radius": trunk_r, "length": trunk_h},
+                "#6e4f32", z_offset=trunk_h * 0.5,
+            )
+            crown_sym = _make_point_3d_symbol(
+                "Sphere", {"radius": crown_r},
+                crown_col, z_offset=trunk_h + crown_r * 0.72,
+            )
+            for sym, desc in ((trunk_sym, f"{label} trunk"), (crown_sym, f"{label} crown")):
+                if sym is None:
+                    continue
+                rule = QgsRuleBased3DRenderer.Rule(sym, filt, desc)
+                root_rule.appendChild(rule)
+                added += 1
+        if added > 0:
+            renderer = _bind_renderer_to_layer(QgsRuleBased3DRenderer(root_rule), layer)
+            layer.setRenderer3D(renderer)
+            _refresh_3d_layer(layer)
+            return True
 
-    material = _make_material(color_hex)
-    if material is not None:
-        for setter in ("setMaterialSettings", "setMaterial"):
-            fn = getattr(symbol, setter, None)
-            if fn is None:
-                continue
-            with contextlib.suppress(Exception):
-                fn(material)
-                break
-
-    # Lift the sphere so it rests on, not half-buried in, the ground.
-    with contextlib.suppress(Exception):
-        from qgis.PyQt.QtGui import QMatrix4x4
-        transform = QMatrix4x4()
-        transform.translate(0.0, 0.0, 2.5)
-        symbol.setTransform(transform)
-
+    symbol = _make_point_3d_symbol("Sphere", {"radius": 2.5 * scale}, color_hex, z_offset=2.5 * scale)
+    if symbol is None:
+        return False
     try:
         renderer = _bind_renderer_to_layer(QgsVectorLayer3DRenderer(symbol), layer)
+        layer.setRenderer3D(renderer)
+        _refresh_3d_layer(layer)
+        return True
+    except Exception:
+        return False
+
+
+def apply_furniture_3d(layer, role: str = "lights") -> bool:
+    """Render street furniture point layers (lights, busstops, benches, trashbins) in 3D."""
+    if layer is None:
+        return False
+    try:
+        from qgis._3d import QgsVectorLayer3DRenderer
+    except Exception:
+        return False
+
+    role = (role or "lights").lower()
+    if role == "lights":
+        with contextlib.suppress(Exception):
+            from qgis._3d import QgsRuleBased3DRenderer
+            root = QgsRuleBased3DRenderer.Rule(None)
+            pole = _make_point_3d_symbol("Cylinder", {"radius": 0.14, "length": 4.2}, "#475569", z_offset=2.1)
+            lamp = _make_point_3d_symbol("Sphere", {"radius": 0.42}, "#fde047", z_offset=4.4, emissive=True)
+            if pole is not None and lamp is not None:
+                root.appendChild(QgsRuleBased3DRenderer.Rule(pole, "", "Lamp pole"))
+                root.appendChild(QgsRuleBased3DRenderer.Rule(lamp, "", "Lamp head"))
+                renderer = _bind_renderer_to_layer(QgsRuleBased3DRenderer(root), layer)
+                layer.setRenderer3D(renderer)
+                _refresh_3d_layer(layer)
+                return True
+        sym = _make_point_3d_symbol("Sphere", {"radius": 0.55}, "#fde047", z_offset=4.0, emissive=True)
+    elif role == "busstops":
+        sym = _make_point_3d_symbol("Cylinder", {"radius": 0.65, "length": 2.8}, "#0284c7", z_offset=1.4)
+    elif role == "benches":
+        sym = _make_point_3d_symbol("Cylinder", {"radius": 0.55, "length": 0.65}, "#a66e38", z_offset=0.35)
+    else:
+        sym = _make_point_3d_symbol("Cylinder", {"radius": 0.30, "length": 0.90}, "#64748b", z_offset=0.45)
+
+    if sym is None:
+        return False
+    try:
+        renderer = _bind_renderer_to_layer(QgsVectorLayer3DRenderer(sym), layer)
         layer.setRenderer3D(renderer)
         _refresh_3d_layer(layer)
         return True
@@ -592,14 +730,136 @@ def _apply_basemap_clip(settings, layers, clip_geometry=None):
         settings.setClippingRegions([region])
 
 
+def _sun_direction_vector(azimuth_deg: float = 315.0, altitude_deg: float = 45.0):
+    """Compute a 3D unit vector pointing from the sun toward the ground."""
+    az = math.radians(float(azimuth_deg))
+    alt = math.radians(max(5.0, min(88.0, float(altitude_deg))))
+    horiz = math.cos(alt)
+    dx = -horiz * math.sin(az)
+    dy = -horiz * math.cos(az)
+    dz = -math.sin(alt)
+    return dx, dy, dz
+
+
+def apply_3d_atmosphere_and_terrain(
+    settings,
+    resolution: int = 1024,
+    bg_color_hex: str | None = None,
+    terrain_layer=None,
+    terrain_vertical_scale: float = 1.0,
+    edl_enabled: bool = True,
+    shadows_enabled: bool = True,
+    sun_azimuth: float = 315.0,
+    sun_altitude: float = 45.0,
+    ambient_occlusion: bool = True,
+):
+    """Configure DEM/flat terrain, Eye-Dome Lighting (EDL), sun shadows, and SSAO on ``settings``."""
+    if settings is None:
+        return False
+
+    # 1. Terrain (DEM raster when provided, else Flat terrain)
+    terrain_configured = False
+    if terrain_layer is not None:
+        with contextlib.suppress(Exception):
+            from qgis._3d import QgsDemTerrainSettings
+            dem = QgsDemTerrainSettings()
+            dem.setLayer(terrain_layer)
+            with contextlib.suppress(Exception):
+                dem.setVerticalScale(max(0.1, float(terrain_vertical_scale or 1.0)))
+            with contextlib.suppress(Exception):
+                dem.setResolution(256)
+            with contextlib.suppress(Exception):
+                dem.setSkirtHeight(15.0)
+            with contextlib.suppress(Exception):
+                dem.setMapTileResolution(int(resolution))
+            settings.setTerrainSettings(dem)
+            terrain_configured = True
+
+    if not terrain_configured:
+        with contextlib.suppress(Exception):
+            current = settings.terrainSettings()
+            from qgis._3d import QgsFlatTerrainSettings
+            if current is None or terrain_layer is None:
+                flat = QgsFlatTerrainSettings()
+                with contextlib.suppress(Exception):
+                    flat.setMapTileResolution(int(resolution))
+                settings.setTerrainSettings(flat)
+
+    applied_res = False
+    with contextlib.suppress(Exception):
+        if hasattr(settings, "terrainSettings"):
+            t_settings = settings.terrainSettings()
+            if t_settings and hasattr(t_settings, "setMapTileResolution"):
+                t_settings.setMapTileResolution(int(resolution))
+                settings.setTerrainSettings(t_settings)
+                applied_res = True
+    if not applied_res:
+        with contextlib.suppress(Exception):
+            settings.setMapTileResolution(int(resolution))
+
+    with contextlib.suppress(Exception):
+        settings.setTerrainRenderingEnabled(True)
+    with contextlib.suppress(Exception):
+        settings.setTerrainShadingEnabled(bool(terrain_layer is not None))
+
+    # 2. Eye-Dome Lighting (EDL) for crisp architectural depth & silhouette edges
+    with contextlib.suppress(Exception):
+        settings.setEyeDomeLightingEnabled(bool(edl_enabled))
+        settings.setEyeDomeLightingStrength(1000.0)
+        settings.setEyeDomeLightingDistance(2)
+
+    # 3. Directional sun light & real-time shadow rendering
+    with contextlib.suppress(Exception):
+        from qgis._3d import QgsDirectionalLightSettings
+        from qgis.core import QgsVector3D
+        dx, dy, dz = _sun_direction_vector(sun_azimuth, sun_altitude)
+        dlight = QgsDirectionalLightSettings()
+        dlight.setDirection(QgsVector3D(dx, dy, dz))
+        with contextlib.suppress(Exception):
+            dlight.setIntensity(1.0)
+        if hasattr(settings, "setLightSources"):
+            settings.setLightSources([dlight])
+        elif hasattr(settings, "setDirectionalLights"):
+            settings.setDirectionalLights([dlight])
+
+    with contextlib.suppress(Exception):
+        from qgis._3d import QgsShadowRenderingSettings
+        sh = QgsShadowRenderingSettings()
+        sh.setRenderShadows(bool(shadows_enabled))
+        with contextlib.suppress(Exception):
+            sh.setMaximumShadowRenderingDistance(1800.0)
+        with contextlib.suppress(Exception):
+            sh.setShadowMapResolution(2048)
+        settings.setShadowRenderingSettings(sh)
+
+    # 4. Screen-Space Ambient Occlusion (SSAO)
+    with contextlib.suppress(Exception):
+        if hasattr(settings, "ambientOcclusionSettings") and hasattr(settings, "setAmbientOcclusionSettings"):
+            ao = settings.ambientOcclusionSettings()
+            if ao is not None and hasattr(ao, "setEnabled"):
+                ao.setEnabled(bool(ambient_occlusion))
+                settings.setAmbientOcclusionSettings(ao)
+
+    # 5. Background / Sky colour
+    if bg_color_hex:
+        with contextlib.suppress(Exception):
+            from qgis.PyQt.QtGui import QColor
+            settings.setBackgroundColor(QColor(bg_color_hex))
+    with contextlib.suppress(Exception):
+        settings.setIsSkyboxEnabled(False)
+
+    return True
+
+
 def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, layers=None,
-                            clip_geometry=None):
-    """Apply layers, extent, terrain and camera framing to one QGIS 3D canvas."""
+                            clip_geometry=None, terrain_layer=None, terrain_vertical_scale=1.0,
+                            edl_enabled=True, shadows_enabled=True, sun_azimuth=315.0,
+                            sun_altitude=45.0, ambient_occlusion=True):
+    """Apply layers, extent, terrain, atmosphere and camera framing to one QGIS 3D canvas."""
     if canvas is None:
         return False
     try:
         from qgis.core import QgsProject, QgsVector3D
-        from qgis.PyQt.QtGui import QColor
         settings = canvas.mapSettings()
         if settings is None:
             return False
@@ -628,30 +888,18 @@ def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, l
             settings.setPathResolver(project.pathResolver())
             settings.resolveReferences(project)
 
-        with contextlib.suppress(Exception):
-            if settings.terrainSettings() is None:
-                from qgis._3d import QgsFlatTerrainSettings
-                settings.setTerrainSettings(QgsFlatTerrainSettings())
-
-        applied = False
-        with contextlib.suppress(Exception):
-            if hasattr(settings, "terrainSettings"):
-                t_settings = settings.terrainSettings()
-                if t_settings and hasattr(t_settings, "setMapTileResolution"):
-                    t_settings.setMapTileResolution(int(resolution))
-                    settings.setTerrainSettings(t_settings)
-                    applied = True
-        if not applied:
-            with contextlib.suppress(Exception):
-                settings.setMapTileResolution(int(resolution))
-
-        if bg_color_hex:
-            with contextlib.suppress(Exception):
-                settings.setBackgroundColor(QColor(bg_color_hex))
-        with contextlib.suppress(Exception):
-            settings.setIsSkyboxEnabled(False)
-        with contextlib.suppress(Exception):
-            settings.setTerrainRenderingEnabled(True)
+        apply_3d_atmosphere_and_terrain(
+            settings,
+            resolution=resolution,
+            bg_color_hex=bg_color_hex,
+            terrain_layer=terrain_layer,
+            terrain_vertical_scale=terrain_vertical_scale,
+            edl_enabled=edl_enabled,
+            shadows_enabled=shadows_enabled,
+            sun_azimuth=sun_azimuth,
+            sun_altitude=sun_altitude,
+            ambient_occlusion=ambient_occlusion,
+        )
 
         scene = None
         with contextlib.suppress(Exception):
@@ -679,17 +927,52 @@ def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, l
         return False
 
 
-def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None):
-    """Refresh all active QGIS 3D canvases; retained for existing UI hooks."""
+def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None,
+                               terrain_layer=None, terrain_vertical_scale=1.0,
+                               edl_enabled=True, shadows_enabled=True,
+                               sun_azimuth=315.0, sun_altitude=45.0,
+                               ambient_occlusion=True):
+    """Refresh all active QGIS 3D canvases with resolution, terrain, and lighting settings."""
     ok = False
     for canvas in find_3d_map_canvases(iface):
-        ok = configure_3d_map_canvas(iface, canvas, resolution, bg_color_hex) or ok
+        try:
+            settings = canvas.mapSettings()
+            if settings is not None:
+                apply_3d_atmosphere_and_terrain(
+                    settings,
+                    resolution=resolution,
+                    bg_color_hex=bg_color_hex,
+                    terrain_layer=terrain_layer,
+                    terrain_vertical_scale=terrain_vertical_scale,
+                    edl_enabled=edl_enabled,
+                    shadows_enabled=shadows_enabled,
+                    sun_azimuth=sun_azimuth,
+                    sun_altitude=sun_altitude,
+                    ambient_occlusion=ambient_occlusion,
+                )
+                with contextlib.suppress(Exception):
+                    canvas.requestUpdate()
+                ok = True
+        except Exception:
+            ok = configure_3d_map_canvas(
+                iface, canvas, resolution, bg_color_hex,
+                terrain_layer=terrain_layer,
+                terrain_vertical_scale=terrain_vertical_scale,
+                edl_enabled=edl_enabled,
+                shadows_enabled=shadows_enabled,
+                sun_azimuth=sun_azimuth,
+                sun_altitude=sun_altitude,
+                ambient_occlusion=ambient_occlusion,
+            ) or ok
     return ok
 
 
 def create_managed_3d_map_canvas(iface, resolution=1024, bg_color_hex=None,
                                  name=MANAGED_3D_CANVAS_NAME, layers=None,
-                                 clip_geometry=None):
+                                 clip_geometry=None, terrain_layer=None,
+                                 terrain_vertical_scale=1.0, edl_enabled=True,
+                                 shadows_enabled=True, sun_azimuth=315.0,
+                                 sun_altitude=45.0, ambient_occlusion=True):
     """Create or reuse the plugin-owned native 3D canvas.
 
     The canvas stays owned by QGIS as a normal 3D Map View. The plugin controls
@@ -714,7 +997,13 @@ def create_managed_3d_map_canvas(iface, resolution=1024, bg_color_hex=None,
         return None
     _mark_canvas_owned(canvas, name)
     configure_3d_map_canvas(
-        iface, canvas, resolution, bg_color_hex, layers=layers, clip_geometry=clip_geometry)
+        iface, canvas, resolution, bg_color_hex, layers=layers,
+        clip_geometry=clip_geometry, terrain_layer=terrain_layer,
+        terrain_vertical_scale=terrain_vertical_scale,
+        edl_enabled=edl_enabled, shadows_enabled=shadows_enabled,
+        sun_azimuth=sun_azimuth, sun_altitude=sun_altitude,
+        ambient_occlusion=ambient_occlusion,
+    )
     return canvas
 
 
