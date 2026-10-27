@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.51.1] - 2026-10-27
+
+- Hub listing text rewritten; author Geophilo; university affiliation removed; documentation links use the standard geophilo.com pages (manual.html, guide/); manual HTML no longer ships in the plugin package.
+
 ## [0.51.0] - 2026-10-20
 
 - **3D DEM Terrain Integration**: Optional project DEM/DTM raster selector (initialized empty) and vertical exaggeration control (`0.5x–5.0x`) in both the **Build** and **Theme & Style** tabs, configuring `QgsDemTerrainSettings` on the managed 3D scene.
