@@ -1,5 +1,112 @@
 # Changelog
 
+## [0.52.0] - 2026-11-04
+
+QGIS no longer freezes while OpenStreetMap downloads, Cancel works, the
+OpenStreetMap servers are asked the way their 2026 rules require, and saving
+keeps your work.
+
+- **No freeze, and a Cancel that works.** Every Overpass request used to run on
+  the QGIS main thread (`QgsBlockingNetworkRequest`), so QGIS froze for each
+  request, in the worst case about seven minutes per tile. Cancel was checked
+  only between tiles, and a Cancel pressed late threw away a download that had
+  already finished. The download now runs in the background as a QGIS task,
+  the status line says which server is being asked and counts the seconds,
+  and Cancel frees the dock within two seconds. A result that arrived before
+  Cancel is kept and built. Unloading the plugin (or closing QGIS) during a
+  download no longer risks a frozen QGIS: the cancel is sent only after the
+  dock has been taken down. When every server runs out of time on a part, the
+  click stops instead of asking for the remaining parts.
+- **Saving checks before downloading.** A read-only file or a folder that
+  cannot take new files is refused before any request is sent; a GeoPackage
+  on a network share now works; a GeoPackage open in another program is
+  reported as such, not as "not a GeoPackage".
+- **Polite to the OpenStreetMap servers.** QGIS reports every 4xx and 5xx
+  answer as a network error, so 0.51 never read the status and retried every
+  error: up to six requests per tile, so a 40-tile area could cost 240
+  requests per click, and a 429 (too many requests) was retried after 1.2
+  seconds. The Overpass client now follows the design of the one in 3D OSM
+  Model 1.10.0:
+  - the status is read even when QGIS reports an error;
+  - a server that answers 429 rests for a minute, one that refuses (403 or
+    406) for an hour, a busy one (5xx) for 45 seconds and one that does not
+    answer for 2 minutes, doubling while it keeps failing; the rests are kept
+    in the QGIS settings, so they hold across QGIS sessions;
+  - each server gets one request per tile (on QGIS 4, one more after a
+    dropped connection; on QGIS 3, Qt already re-sends by itself), one click
+    sends at most 64 requests, and a large download stops early, with the
+    tiles it has, when every server is resting;
+  - queries carry `[timeout:N][maxsize:134217728]`, a transfer lasts at most
+    55 seconds, and an answer is cut at 64 MiB instead of being downloaded in
+    full (up to 256 MiB) before the size check;
+  - every request carries the `Referer`
+    https://github.com/YusufEminoglu/osm_quick_3d, because QGIS replaces a
+    plugin's own User-Agent (which still said 0.50.0); where QGIS allows it
+    (QGIS 4.2, not 3.44) the User-Agent also ends with
+    `OSM-Quick-3D-QGIS-Plugin`;
+  - empty answers and answers carrying a server remark (a query that ran out
+    of time or memory) are never stored; an empty answer used to be stored for
+    a week, so the next run sent nothing and reported an empty area;
+  - the servers are overpass-api.de and overpass.private.coffee;
+    overpass-api.de goes first until a server has delivered, then the server
+    that last delivered goes first. overpass.kumi.systems is no longer asked:
+    it is the same machine as overpass.private.coffee, so failing over to it
+    asked a busy server twice.
+  - A failed download says so in plain sentences that name every server asked
+    and what each answered. It used to show raw Qt and JSON text, report a
+    hang as a JSON error and keep only the last three failures, dropping the
+    first server.
+- **Saving that keeps your work.** The first layer written to a GeoPackage
+  used to recreate the whole file, deleting any other table in the file you
+  chose, and running again into the same file while its layers were loaded
+  failed with "already exists" and fell back silently to temporary layers.
+  Now the file is asked for before the download, and cancelling that dialog
+  cancels the run; a path that is not a GeoPackage is refused. An existing
+  GeoPackage is never recreated and no table in it is replaced: when a name
+  is taken, the whole run uses the next free number (`buildings_2` and so
+  on), so a second run into the same file works. A layer that cannot be
+  saved is named in the summary with the reason, and when the result is
+  temporary (memory) layers the summary says that they vanish when the
+  project is reopened. The old `write_layer_to_gpkg` helper is removed.
+- **Faithful data.** One absurd tag (`building:levels=inf`, a 400-digit
+  `height`) raised an error that failed the whole download, and failed it
+  again from the cache; `levels=1e10` overflowed the integer field so every
+  later building was dropped. Floor counts are now kept between 1 and 200
+  and heights between 1 and 1,000 m, and a value that is not a finite number
+  is ignored. A multipolygon island inside a hole is kept, two-point outer
+  ways are no longer dropped, and open segments are joined into rings. Roads
+  in tunnels (`tunnel=yes` or `culvert`) and roads tagged `proposed`,
+  `construction`, `abandoned`, `disused`, `razed` or `demolished` are no
+  longer drawn as surface roads.
+- **A dock that fits.** **Download & build 3D**, **Cancel** and the status
+  line stay pinned below the scrolling settings, so they are visible on a
+  1366 × 728 screen; Run used to sit 1,066 px down in a 611 px panel. The
+  status line and the summary of the last run sit in a footer under both
+  tabs, and the summary is kept until the next run. Messages are short and
+  appear in the status line and the message bar instead of modal boxes; the
+  details go to the QGIS log. On an empty map Run is switched off and the
+  dock points to **Add OSM basemap** instead of a modal "Empty area" box. The
+  3D sun shadow and ambient occlusion switches did nothing on QGIS 3.44 and
+  4.2, which give plugins no access to those settings, so they are removed.
+  Labels with "&" show it correctly. Unloading the plugin now deletes the
+  dock and its connections, and the dock can no longer be used half-way
+  through a run.
+- **Documentation and listing.** Bug reports go to GitHub issues (the GitLab
+  tracker answered 404). The README links point to the right places: the
+  release list, the 3D OSM Model repository and each related plugin's own
+  repository; the plugin count, the server list, the layer names and the
+  Theme & Style description match the plugin; and a new section explains
+  when to use OSM Quick 3D, 3D OSM Model or QuickOSM. `docs/index.html` now
+  forwards to the hosted manual instead of a missing file, and the Hub
+  changelog gains the missing 0.19.1, 0.20.3 to 0.20.7 and 0.50.1 entries.
+- **Tests.** The pure-Python tests no longer delete the real
+  `osm_quick_3d_cache` in the system temporary folder, and their geometry checks no longer pass on
+  stubs whatever the result. Four new QGIS suites, run on QGIS 3.44 and 4.2
+  against local fake servers with no public network traffic, cover the
+  Overpass rules (`test_overpass_rules_qgis.py`), data fidelity
+  (`test_osm_fidelity_qgis.py`), saving (`test_save_qgis.py`) and the dock
+  (`test_dock_qgis.py`).
+
 ## [0.51.1] - 2026-10-27
 
 - Hub listing text rewritten; author Geophilo; university affiliation removed; documentation links use the standard geophilo.com pages (manual.html, guide/); manual HTML no longer ships in the plugin package.

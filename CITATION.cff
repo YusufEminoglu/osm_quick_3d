@@ -5,9 +5,15 @@ authors:
     email: "yusuf.eminoglu@deu.edu.tr"
     orcid: "https://orcid.org/0009-0005-6000-2934"
 title: "OSM Quick 3D"
-version: "0.51.1"
+version: "0.52.0"
 doi: "10.5281/zenodo.20753122"
-date-released: "2026-10-27"
-url: "https://github.com/YusufEminoglu/osm_quick_3d"
+date-released: "2026-11-04"
+url: "https://geophilo.com/osm_quick_3d/"
+repository-code: "https://gitlab.com/geophilo1/osm_quick_3d"
 license: "MIT"
-abstract: "One-click OpenStreetMap into native QGIS: function-styled vector layers plus flat-roof 3D building massing on a selectable study-area shape (rectangle, rounded rectangle, circle, hexagon or your own selected polygon), with selectable map themes, an optional recessed base and a basemap underlay."
+keywords:
+  - QGIS
+  - OpenStreetMap
+  - 3D buildings
+  - urban planning
+abstract: "A QGIS plugin that downloads OpenStreetMap data for a chosen study area (rectangle, rounded rectangle, circle, hexagon or a selected polygon) and adds it as native, editable QGIS layers: buildings, roads, water, greens, trees and street furniture, styled by function, with the buildings extruded in the QGIS 3D view (LOD1 block massing with footprint and estimated floor area). The download runs in the background, can be cancelled and follows the Overpass API servers' usage rules; the result can be saved to a GeoPackage."

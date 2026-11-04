@@ -748,12 +748,10 @@ def apply_3d_atmosphere_and_terrain(
     terrain_layer=None,
     terrain_vertical_scale: float = 1.0,
     edl_enabled: bool = True,
-    shadows_enabled: bool = True,
     sun_azimuth: float = 315.0,
     sun_altitude: float = 45.0,
-    ambient_occlusion: bool = True,
 ):
-    """Configure DEM/flat terrain, Eye-Dome Lighting (EDL), sun shadows, and SSAO on ``settings``."""
+    """Configure DEM/flat terrain, eye-dome lighting, sun direction and background on ``settings``."""
     if settings is None:
         return False
 
@@ -808,7 +806,7 @@ def apply_3d_atmosphere_and_terrain(
         settings.setEyeDomeLightingStrength(1000.0)
         settings.setEyeDomeLightingDistance(2)
 
-    # 3. Directional sun light & real-time shadow rendering
+    # 3. Directional sun light
     with contextlib.suppress(Exception):
         from qgis._3d import QgsDirectionalLightSettings
         from qgis.core import QgsVector3D
@@ -822,25 +820,11 @@ def apply_3d_atmosphere_and_terrain(
         elif hasattr(settings, "setDirectionalLights"):
             settings.setDirectionalLights([dlight])
 
-    with contextlib.suppress(Exception):
-        from qgis._3d import QgsShadowRenderingSettings
-        sh = QgsShadowRenderingSettings()
-        sh.setRenderShadows(bool(shadows_enabled))
-        with contextlib.suppress(Exception):
-            sh.setMaximumShadowRenderingDistance(1800.0)
-        with contextlib.suppress(Exception):
-            sh.setShadowMapResolution(2048)
-        settings.setShadowRenderingSettings(sh)
+    # Shadow and ambient-occlusion settings are not exposed to Python by QGIS
+    # (Qgs3DMapSettings has no shadowSettings()/ambientOcclusionSettings() in
+    # 3.44 or 4.2), so the plugin offers no switch for them.
 
-    # 4. Screen-Space Ambient Occlusion (SSAO)
-    with contextlib.suppress(Exception):
-        if hasattr(settings, "ambientOcclusionSettings") and hasattr(settings, "setAmbientOcclusionSettings"):
-            ao = settings.ambientOcclusionSettings()
-            if ao is not None and hasattr(ao, "setEnabled"):
-                ao.setEnabled(bool(ambient_occlusion))
-                settings.setAmbientOcclusionSettings(ao)
-
-    # 5. Background / Sky colour
+    # 4. Background / Sky colour
     if bg_color_hex:
         with contextlib.suppress(Exception):
             from qgis.PyQt.QtGui import QColor
@@ -853,8 +837,8 @@ def apply_3d_atmosphere_and_terrain(
 
 def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, layers=None,
                             clip_geometry=None, terrain_layer=None, terrain_vertical_scale=1.0,
-                            edl_enabled=True, shadows_enabled=True, sun_azimuth=315.0,
-                            sun_altitude=45.0, ambient_occlusion=True):
+                            edl_enabled=True, sun_azimuth=315.0,
+                            sun_altitude=45.0):
     """Apply layers, extent, terrain, atmosphere and camera framing to one QGIS 3D canvas."""
     if canvas is None:
         return False
@@ -895,10 +879,8 @@ def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, l
             terrain_layer=terrain_layer,
             terrain_vertical_scale=terrain_vertical_scale,
             edl_enabled=edl_enabled,
-            shadows_enabled=shadows_enabled,
             sun_azimuth=sun_azimuth,
             sun_altitude=sun_altitude,
-            ambient_occlusion=ambient_occlusion,
         )
 
         scene = None
@@ -929,9 +911,8 @@ def configure_3d_map_canvas(iface, canvas, resolution=1024, bg_color_hex=None, l
 
 def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None,
                                terrain_layer=None, terrain_vertical_scale=1.0,
-                               edl_enabled=True, shadows_enabled=True,
-                               sun_azimuth=315.0, sun_altitude=45.0,
-                               ambient_occlusion=True):
+                               edl_enabled=True,
+                               sun_azimuth=315.0, sun_altitude=45.0):
     """Refresh all active QGIS 3D canvases with resolution, terrain, and lighting settings."""
     ok = False
     for canvas in find_3d_map_canvases(iface):
@@ -945,10 +926,8 @@ def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None,
                     terrain_layer=terrain_layer,
                     terrain_vertical_scale=terrain_vertical_scale,
                     edl_enabled=edl_enabled,
-                    shadows_enabled=shadows_enabled,
                     sun_azimuth=sun_azimuth,
                     sun_altitude=sun_altitude,
-                    ambient_occlusion=ambient_occlusion,
                 )
                 with contextlib.suppress(Exception):
                     canvas.requestUpdate()
@@ -959,10 +938,8 @@ def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None,
                 terrain_layer=terrain_layer,
                 terrain_vertical_scale=terrain_vertical_scale,
                 edl_enabled=edl_enabled,
-                shadows_enabled=shadows_enabled,
                 sun_azimuth=sun_azimuth,
                 sun_altitude=sun_altitude,
-                ambient_occlusion=ambient_occlusion,
             ) or ok
     return ok
 
@@ -971,8 +948,7 @@ def create_managed_3d_map_canvas(iface, resolution=1024, bg_color_hex=None,
                                  name=MANAGED_3D_CANVAS_NAME, layers=None,
                                  clip_geometry=None, terrain_layer=None,
                                  terrain_vertical_scale=1.0, edl_enabled=True,
-                                 shadows_enabled=True, sun_azimuth=315.0,
-                                 sun_altitude=45.0, ambient_occlusion=True):
+                                 sun_azimuth=315.0, sun_altitude=45.0):
     """Create or reuse the plugin-owned native 3D canvas.
 
     The canvas stays owned by QGIS as a normal 3D Map View. The plugin controls
@@ -1000,9 +976,8 @@ def create_managed_3d_map_canvas(iface, resolution=1024, bg_color_hex=None,
         iface, canvas, resolution, bg_color_hex, layers=layers,
         clip_geometry=clip_geometry, terrain_layer=terrain_layer,
         terrain_vertical_scale=terrain_vertical_scale,
-        edl_enabled=edl_enabled, shadows_enabled=shadows_enabled,
+        edl_enabled=edl_enabled,
         sun_azimuth=sun_azimuth, sun_altitude=sun_altitude,
-        ambient_occlusion=ambient_occlusion,
     )
     return canvas
 

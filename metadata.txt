@@ -2,22 +2,23 @@
 name=OSM Quick 3D
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
-description=One click from OpenStreetMap to native QGIS layers: function-styled roads, buildings, water and greens plus 3D building massing in the QGIS 3D view, saved to one GeoPackage if you wish.
-version=0.51.1
+description=One click from OpenStreetMap to native, editable QGIS layers: styled buildings, roads, water and greens, with the buildings extruded in the QGIS 3D view. The download runs in the background and can be cancelled; the result can be saved to a GeoPackage.
+version=0.52.0
 author=Geophilo
 email=yusuf.eminoglu@deu.edu.tr
-
-about=OSM Quick 3D brings OpenStreetMap into QGIS as ordinary, styled layers and extrudes the buildings in QGIS's own 3D view, with no browser involved. Pick the map area or your selection and a study shape (rectangle, rounded rectangle, circle, hexagon or your own polygon).
-    Buildings are coloured by use or by height, roads by class and metric width, and heights come from OSM tags, floor counts or a sensible default. Trees get simple 3D canopies, an optional plinth sets the model on a base, and a height factor helps low-rise districts read. Every building carries its footprint and estimated floor area, and the run reports the totals for quick planning quantities. Downloads are cached for a week.
-    Because the result is native layers, it handles far larger areas than a web 3D scene. Needs an internet connection for the OpenStreetMap download.
+about=OSM Quick 3D brings OpenStreetMap into QGIS as native, editable vector layers and extrudes the buildings in the QGIS 3D view; no browser is involved. Pick the map view or the selected features and a study shape (rectangle, rounded rectangle, circle, hexagon or your own selected polygon), then press Download and build 3D.
+    Buildings are coloured by use or by height, roads by class and metric width, and heights come from the OSM height tag, the floor count or a default for the building type. Trees stand as 3D trunks and crowns, an optional recessed base sets the model on a plinth, and a height factor helps low-rise districts read. Every building carries its footprint and estimated gross floor area, and the run reports the totals. Twelve map themes recolour the 2D map and the 3D view together without downloading again.
+    The download runs in the background as a QGIS task, so QGIS stays usable while it works; the status line counts the seconds, and Cancel frees the dock within two seconds, while a result that has already arrived is kept and built. Areas up to 2,500 km2 are split into tiles of at most 100 km2.
+    Polite to the OpenStreetMap servers: each server gets one request per tile (on QGIS 4 one more after a dropped connection), one click sends at most 64 requests, and a server that refuses, is busy or asks to slow down rests (a minute after HTTP 429, an hour after 403 or 406, 45 seconds after a 5xx, 2 minutes without an answer, doubling while it keeps failing). The rests hold across QGIS sessions, the download stops early when every server is resting, queries are bounded in time and size, answers are cut at 64 MiB, and every request names the plugin in its Referer. Only complete answers are kept on this computer, for a week. Data comes from the public Overpass API servers overpass-api.de and overpass.private.coffee (overpass-api.de first until one has delivered, then the one that last delivered); OpenStreetMap tiles load only if you add the basemap.
+    Saving: with Save result to GeoPackage, the file is asked for before the download, and the layers and their 2D and 3D styles go into it. An existing GeoPackage is never recreated and no table in it is replaced; when a name is taken the run uses the next free number (buildings_2 and so on), so running again into the same file keeps working. Without it the layers are temporary: they vanish when the project is reopened, and the summary after the run says so. Needs an internet connection for the download.
     Manual: https://geophilo.com/osm_quick_3d/manual.html
 
-tracker=https://gitlab.com/geophilo1/osm_quick_3d/-/issues
+tracker=https://github.com/YusufEminoglu/osm_quick_3d/issues
 repository=https://gitlab.com/geophilo1/osm_quick_3d
 homepage=https://geophilo.com/osm_quick_3d/
 
 category=Vector
-tags=osm,openstreetmap,3d,massing,extrusion,overpass,urban planning,vector,geophilo
+tags=osm,openstreetmap,3d,massing,extrusion,overpass,urban planning,vector,geophilo,buildings,3d buildings,building height,3d city,city model,3d view,lod1,floor area,geopackage,quickosm
 icon=icons/icon.png
 
 experimental=False
@@ -26,6 +27,7 @@ hasProcessingProvider=no
 license=MIT
 
 changelog=
+    0.52.0 - QGIS no longer freezes while OpenStreetMap downloads, Cancel works, the servers are asked politely, and saving keeps your work. The download runs in the background as a QGIS task with a status line that counts the seconds, and Cancel frees the dock within two seconds; a result that has already arrived is kept and built. The Overpass client follows the 2026 rules: the answer status is read, a server rests after an error (a minute after 429, an hour after 403 or 406, 45 seconds after a 5xx, 2 minutes without an answer, doubling while it keeps failing) and the rests hold across QGIS sessions, each server gets one request per tile (on QGIS 4 one more after a dropped connection), one click sends at most 64 requests, the download stops early when every server is resting, queries are bounded in time and size and cut at 64 MiB, every request carries a Referer naming the plugin (and a User-Agent suffix on QGIS 4.2), and empty answers or answers with a server remark are never stored. overpass.kumi.systems is no longer asked (it is the same machine as overpass.private.coffee). Messages are plain sentences naming every server asked, without modal boxes. The GeoPackage file is asked for before the download; an existing GeoPackage is never recreated and no table in it is replaced, a second run into the same file uses the next free table names (buildings_2 and so on) instead of falling back silently to temporary layers, and the plugin says when the result is temporary layers. One absurd height or levels tag no longer sinks the download or drops later buildings, floor counts are kept between 1 and 200 and heights between 1 and 1,000 m, multipolygon islands inside holes are kept, two-point outer ways are joined into rings, and roads in tunnels or tagged proposed, construction, abandoned, disused, razed or demolished are no longer drawn as roads. Run, Cancel and the status line stay visible on small screens, the run summary is kept in a footer, an empty map switches Run off with a hint to add the OSM basemap, the 3D shadow and ambient occlusion switches that did nothing are removed (QGIS gives plugins no access to those settings), and unloading the plugin deletes the dock. The README links, the issue tracker (now GitHub issues) and the documentation page are corrected, and new tests cover the network rules, the data, saving and the dock.
     0.51.1 - Hub listing text rewritten; author Geophilo; university affiliation removed; documentation links use the standard geophilo.com pages (manual.html, guide/); manual HTML no longer ships in the plugin package.
     0.51.0
         - Real 3D DEM terrain integration (QgsDemTerrainSettings) with selectable project raster layer (empty by default) and vertical exaggeration control (0.5x to 5.0x) in both Build and Theme and Style tabs.
@@ -36,16 +38,23 @@ changelog=
         - Height-tiered 3D trees with trunk cylinders and scaled crowns, plus theme-aware 2D and 3D street furniture (street lamps with pole and glowing head, bus stops, benches, trash bins).
         - Automatic persistence of 2D and 3D styles into GeoPackage (saveStyleToDatabase as default style), live canvas area (km2) readout with clip warning, and a Cancel button during multi-tile downloads.
     0.50.2 - Redesign plugin icon to high-end 3D tactile brand design with circular teal pedestal, zero margin, and refreshed documentation links.
+    0.50.1 - Repository and documentation URLs moved to GitLab and Cloudflare Pages.
     OSM Quick 3D 0.50.0
         - Add reliable city-scale downloads: areas up to 2,500 km2 are split into compact 100 km2 Overpass requests, cached independently, merged without seam duplicates, and allowed to recover partially when a public mirror fails.
         - Use QGIS's native network stack so proxy and TLS settings are respected, eliminating the urllib SSL mismatch path; add transient retry, three-mirror fallback, response and object caps, and actionable failure details.
         - Query only the enabled layer families and batch memory-provider writes for substantially lower server load and faster large-result construction.
+    0.20.7 - Complete OpenStreetMap, tile service and Overpass API third-party notice; OpenStreetMap attribution stored on the optional basemap layer.
+    0.20.6 - Online user manual link added.
+    0.20.5 - Reference manual expanded with theory and references.
+    0.20.4 - Save as PDF button added to the reference manual.
+    0.20.3 - Reference manual added.
     OSM Quick 3D 0.20.2
         - Fully "Validated" security scan: every remaining Bandit finding is now resolved in code rather than suppressed by a config file, so the plugin passes the QGIS Hub scan as "Validated" instead of "Validated (configured)". Defensive try/except blocks became contextlib.suppress, the seeded tree-scatter randomiser became a self-contained generator (no random import), and the .bandit file was removed. No functional change: every feature, default and result is identical.
     OSM Quick 3D 0.20.1
         - Qt6 compatibility: scoped nine enum accesses (QDockWidget dock-widget features, QgsUnitTypes render unit, QgsSymbolLayer fill-colour property, QPainter composition mode, QgsVectorFileWriter action/writer-error) so the Hub Qt6 static check reports zero issues; runtime behaviour unchanged on QGIS 3.28+ and 4.x.
     OSM Quick 3D 0.20.0
         - Add OSM basemap button: one click drops a live OpenStreetMap tile layer on the map canvas so you can see and frame your study area before downloading anything. It is added once (re-clicking reuses it) and sits at the bottom of the layer tree, under your other layers.
+    0.19.1 - CITATION.cff added for the Zenodo DOI.
     OSM Quick 3D 0.19.0
         - Polygon study area: a new "Polygon (selected feature)" shape clips OSM to your own selected polygon feature(s) in the active layer, so you can work over any custom boundary, not only a rectangle, circle or hexagon.
         - Four new map themes: Anime Cel (bright cartoon), Desert Dunes (warm arid), Pastel Candy (soft kawaii) and Vaporwave (neon retro) — each recolours buildings, roads, water, greens and the 3D massing.

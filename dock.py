@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import contextlib
 import os
+import time
 
-from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
 from qgis.PyQt.QtGui import QColor, QIcon
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
@@ -41,6 +42,16 @@ from .osm_download import (
 )
 
 _S = "osm_quick_3d"
+
+#: Shown while the map is empty: Run has nothing to download yet.
+EMPTY_MAP_HINT = "The map is empty. Click “Add OSM basemap”, then zoom to your area."
+#: Status colours: text, border.
+_STATUS_COLOURS = {
+    "ok": ("#245d39", "#c9dfd0"),
+    "info": ("#33555a", "#cfe0de"),
+    "warn": ("#8a5300", "#ecd3a6"),
+    "error": ("#a32525", "#efc4c4"),
+}
 
 
 def _truthy(value, default):
@@ -89,6 +100,7 @@ class PluginDockWidget(QDockWidget):
 
     runRequested = pyqtSignal(dict)
     basemapRequested = pyqtSignal()
+    cancelRequested = pyqtSignal()
 
     _QSS = """
     QDockWidget {
@@ -289,13 +301,41 @@ class PluginDockWidget(QDockWidget):
         self._managed_canvas_name = native3d.MANAGED_3D_CANVAS_NAME
         self._scene_clip_geometry = None
         self._cancel_requested = False
+        self._running = False
+        self._area_ready = True
+        self._status_text = ""
+        self._status_kind = "ok"
+        self._wait_started = None
+        self._elapsed_timer = QTimer(self)
+        self._elapsed_timer.setInterval(1000)
+        self._elapsed_timer.timeout.connect(self._render_status)
+        self._signals_connected = []
 
         self._build_ui()
         self._restore()
         self.refresh_groups()
-        with contextlib.suppress(Exception):
-            self.iface.mapCanvas().extentsChanged.connect(self._update_canvas_area_readout)
+        self._connect_external(self.iface.mapCanvas().extentsChanged, self._update_canvas_area_readout)
+        project = QgsProject.instance()
+        self._connect_external(project.layersAdded, self._update_canvas_area_readout)
+        self._connect_external(project.layersRemoved, self._update_canvas_area_readout)
+        self.set_status("Ready.")
         self._update_canvas_area_readout()
+
+    def _connect_external(self, signal, slot):
+        """Connect to a signal of an object this dock does not own; undone on unload."""
+        with contextlib.suppress(Exception):
+            signal.connect(slot)
+            self._signals_connected.append((signal, slot))
+
+    def prepare_for_unload(self):
+        """Disconnect from the canvas and project, stop timers, close the 3D view."""
+        self._elapsed_timer.stop()
+        for signal, slot in self._signals_connected:
+            with contextlib.suppress(TypeError, RuntimeError):
+                signal.disconnect(slot)
+        self._signals_connected = []
+        with contextlib.suppress(Exception):
+            self.cleanup_managed_3d()
 
     def _build_ui(self):
         self.setStyleSheet(self._QSS)
@@ -318,12 +358,36 @@ class PluginDockWidget(QDockWidget):
         self.download_tab = self._download_tab()
         self.live_tab = self._live_tab()
         self.tab_widget.addTab(self.download_tab, "Build")
-        self.tab_widget.addTab(self.live_tab, "Theme & Style")
+        self.tab_widget.addTab(self.live_tab, "Theme && Style")
         self.tab_widget.setTabToolTip(0, "Download & Build")
-        self.tab_widget.setTabToolTip(1, "Theme, live styling, and managed 3D scene layers")
+        self.tab_widget.setTabToolTip(1, "Theme, live styling and the 3D view")
         root.addWidget(self.tab_widget, 1)
+        root.addWidget(self._footer())
 
         self.setWidget(root_widget)
+
+    def _footer(self):
+        """Status line and result summary, pinned below both tabs (never scrolled away)."""
+        footer = QWidget()
+        footer.setObjectName("Footer")
+        lay = QVBoxLayout(footer)
+        lay.setContentsMargins(6, 2, 6, 6)
+        lay.setSpacing(4)
+        self.status = QLabel("")
+        self.status.setObjectName("StatusLabel")
+        self.status.setWordWrap(True)
+        lay.addWidget(self.status)
+        self.summary = QLabel("")
+        self.summary.setObjectName("SummaryLabel")
+        self.summary.setWordWrap(True)
+        self.summary.setTextInteractionFlags(_qt_value(Qt, "TextInteractionFlag", "TextSelectableByMouse"))
+        self.summary.setStyleSheet(
+            "QLabel{color:#1b3c40;background:#ffffff;border:1px solid #cfe0de;"
+            "border-radius:7px;padding:5px 8px;font-size:11px;}"
+        )
+        self.summary.setVisible(False)
+        lay.addWidget(self.summary)
+        return footer
 
     def _header(self):
         header = QFrame()
@@ -369,6 +433,7 @@ class PluginDockWidget(QDockWidget):
         layout.setSpacing(5)
         scroll.setWidget(content)
         outer.addWidget(scroll, 1)
+        tab.outer_layout = outer
         return tab, layout
 
     def _configure_form(self, form):
@@ -408,7 +473,7 @@ class PluginDockWidget(QDockWidget):
         self.add_basemap_btn = QPushButton("Add OSM basemap")
         self.add_basemap_btn.setObjectName("BasemapBtn")
         self.add_basemap_btn.setToolTip(
-            "Add a live OpenStreetMap tile layer to the map canvas to frame your "
+            "Add live OpenStreetMap tiles to the map to frame your "
             "area before downloading. Added once; it sits under your other layers."
         )
         self.add_basemap_btn.setStyleSheet(
@@ -427,16 +492,13 @@ class PluginDockWidget(QDockWidget):
         layout.addWidget(self._download_3d_group())
         layout.addWidget(self._download_output_group())
 
-        self.status = QLabel("Ready")
-        self.status.setObjectName("StatusLabel")
-        self.status.setWordWrap(True)
-        layout.addWidget(self.status)
-
+        # Run and Cancel sit below the scroll area, so they stay on screen on a
+        # small laptop (1366x768) however long the settings above grow.
         run_row = QHBoxLayout()
         run_row.setContentsMargins(0, 0, 0, 0)
         run_row.setSpacing(6)
 
-        self.run_btn = QPushButton("Download & build 3D")
+        self.run_btn = QPushButton("Download && build 3D")
         self.run_btn.setObjectName("PrimaryRun")
         # Explicit inline style so the teal fill can't be dropped by a native Qt
         # style. Some Windows/Qt6 styles ignore a stylesheet background-color unless
@@ -466,7 +528,7 @@ class PluginDockWidget(QDockWidget):
         self.cancel_btn.clicked.connect(self._on_cancel_clicked)
         run_row.addWidget(self.cancel_btn)
 
-        layout.addLayout(run_row)
+        tab.outer_layout.addLayout(run_row)
         return tab
 
     def _download_area_group(self):
@@ -474,9 +536,9 @@ class PluginDockWidget(QDockWidget):
         form = self._configure_form(QFormLayout(box))
 
         self.area_source = QComboBox()
-        self.area_source.addItem("Visible map extent (canvas)", "canvas")
-        self.area_source.addItem("Extent of selected features", "selection")
-        form.addRow("Source:", self.area_source)
+        self.area_source.addItem("Current map view", "canvas")
+        self.area_source.addItem("Around the selected features", "selection")
+        form.addRow("Area from:", self.area_source)
 
         self.shape = QComboBox()
         self.shape.addItem("Rectangle", SHAPE_RECTANGLE)
@@ -501,17 +563,18 @@ class PluginDockWidget(QDockWidget):
         self.max_km2 = QDoubleSpinBox()
         self.max_km2.setRange(0.1, 2500.0)
         self.max_km2.setSingleStep(5.0)
-        self.max_km2.setSuffix(" km2")
+        self.max_km2.setSuffix(" km²")
         self.max_km2.setValue(6.0)
         self.max_km2.setToolTip(
-            "Maximum study area. Areas above 100 km2 are automatically split into "
-            "safe sequential Overpass tiles; successful tiles are cached for retry."
+            "The largest area downloaded. A larger map view is cut to this size around "
+            "its centre. Areas above 100 km² are downloaded in pieces, one after another."
         )
         self.max_km2.valueChanged.connect(self._update_canvas_area_readout)
         self.area_source.currentIndexChanged.connect(self._update_canvas_area_readout)
+        self.shape.currentIndexChanged.connect(self._update_canvas_area_readout)
         form.addRow("Max area:", self.max_km2)
 
-        self.canvas_area_label = QLabel("Canvas extent: —")
+        self.canvas_area_label = QLabel("Map view: —")
         self.canvas_area_label.setWordWrap(True)
         self.canvas_area_label.setStyleSheet("color:#2f756f;font-size:10px;font-weight:600;background:transparent;")
         form.addRow("", self.canvas_area_label)
@@ -540,7 +603,7 @@ class PluginDockWidget(QDockWidget):
         return box
 
     def _download_3d_group(self):
-        box = QGroupBox("Initial appearance & 3D")
+        box = QGroupBox("Initial appearance && 3D")
         form = self._configure_form(QFormLayout(box))
 
         self.cb_extrude = QCheckBox("3D extrusion")
@@ -589,24 +652,19 @@ class PluginDockWidget(QDockWidget):
 
         self.cb_mode_25d = QCheckBox("2.5D axonometric depth (2D map)")
         self.cb_mode_25d.setChecked(False)
-        self.cb_mode_25d.setToolTip("Render an isometric plinth + shadow effect on the 2D canvas for print layouts.")
+        self.cb_mode_25d.setToolTip("Draw a slanted plinth and shadow under buildings on the 2D map, for print layouts.")
         form.addRow("", self.cb_mode_25d)
 
         self.cb_base = QCheckBox("Add recessed ground base")
         form.addRow("", self.cb_base)
 
-        self.cb_open3d = QCheckBox("Open managed 3D Map View")
+        self.cb_open3d = QCheckBox("Open the 3D view after the build")
         form.addRow("", self.cb_open3d)
 
-        self.cb_edl = QCheckBox("3D Eye-Dome Lighting (EDL)")
+        self.cb_edl = QCheckBox("Edge shading in 3D (eye-dome lighting)")
         self.cb_edl.setChecked(True)
-        self.cb_edl.setToolTip("Enhance depth perception and silhouette edges in the native QGIS 3D view.")
+        self.cb_edl.setToolTip("Darkens edges and depth steps in the QGIS 3D view so buildings read clearly.")
         form.addRow("", self.cb_edl)
-
-        self.cb_shadows_3d = QCheckBox("3D sun shadows")
-        self.cb_shadows_3d.setChecked(True)
-        self.cb_shadows_3d.setToolTip("Enable directional sun shadow rendering in the native QGIS 3D view.")
-        form.addRow("", self.cb_shadows_3d)
 
         self.map_resolution = QComboBox()
         self.map_resolution.addItem("Low (256 px)", 256)
@@ -614,14 +672,14 @@ class PluginDockWidget(QDockWidget):
         self.map_resolution.addItem("High (1024 px)", 1024)
         self.map_resolution.addItem("Ultra (2048 px)", 2048)
         self.map_resolution.addItem("Insane (4096 px)", 4096)
-        form.addRow("Map resolution:", self.map_resolution)
+        form.addRow("3D detail:", self.map_resolution)
 
         self.cb_buildings.toggled.connect(self.cb_extrude.setEnabled)
         self.cb_extrude.toggled.connect(self.height_scale.setEnabled)
         return box
 
     def _download_output_group(self):
-        box = QGroupBox("Output & Terrain")
+        box = QGroupBox("Output && Terrain")
         form = self._configure_form(QFormLayout(box))
 
         self.basemap = QgsMapLayerComboBox()
@@ -654,9 +712,21 @@ class PluginDockWidget(QDockWidget):
         form.addRow("Terrain vertical scale:", self.terrain_scale)
 
         self.cb_save_gpkg = QCheckBox("Save result to GeoPackage (with 2D+3D styles)")
+        self.cb_save_gpkg.setToolTip(
+            "Asks for a file before the download. An existing GeoPackage is kept: the new "
+            "layers are added next to its tables, never over them."
+        )
         form.addRow("", self.cb_save_gpkg)
 
-        self.cb_use_cache = QCheckBox("Use OSM cache")
+        self.save_hint = QLabel(
+            "Without a GeoPackage the layers are temporary: they vanish when the project is reopened."
+        )
+        self.save_hint.setWordWrap(True)
+        self.save_hint.setStyleSheet("color:#7a5200;font-size:10px;font-weight:600;background:transparent;")
+        self.cb_save_gpkg.toggled.connect(lambda checked: self.save_hint.setVisible(not checked))
+        form.addRow("", self.save_hint)
+
+        self.cb_use_cache = QCheckBox("Reuse recent downloads of the same area")
         form.addRow("", self.cb_use_cache)
 
         row = QHBoxLayout()
@@ -671,10 +741,10 @@ class PluginDockWidget(QDockWidget):
         tab, layout = self._scroll_tab()
         layout.addWidget(self._role_hint(
             "Theme & Style — live editing of an existing result. Re-tunes the 2D map "
-            "and the managed 3D scene without re-downloading; build a result first."
+            "and the 3D view without downloading again; build a result first."
         ))
 
-        scene_box = QGroupBox("Theme & Scene")
+        scene_box = QGroupBox("Theme && Scene")
         scene_form = self._configure_form(QFormLayout(scene_box))
 
         target_row = QHBoxLayout()
@@ -714,16 +784,16 @@ class PluginDockWidget(QDockWidget):
         scene_controls.setContentsMargins(0, 0, 0, 0)
         scene_controls.setSpacing(5)
         self.open_3d_btn = QPushButton("Open 3D")
-        self.open_3d_btn.setToolTip("Open or refresh the managed native QGIS 3D scene.")
+        self.open_3d_btn.setToolTip("Open the QGIS 3D view of this result, or bring it up to date.")
         self.open_3d_btn.clicked.connect(self._on_open_3d_clicked)
         self.refresh_scene_btn = QPushButton("Refresh")
-        self.refresh_scene_btn.setToolTip("Reapply visible layers, clipping, resolution and camera framing to the managed 3D scene.")
+        self.refresh_scene_btn.setToolTip("Apply the visible layers, clipping, detail and camera to the 3D view again.")
         self.refresh_scene_btn.clicked.connect(self._on_refresh_3d_clicked)
         self.focus_3d_btn = QPushButton("Focus")
-        self.focus_3d_btn.setToolTip("Bring the managed 3D scene to the front when QGIS keeps it as a separate window.")
+        self.focus_3d_btn.setToolTip("Bring the 3D view to the front when QGIS keeps it in a separate window.")
         self.focus_3d_btn.clicked.connect(self._raise_3d_view)
         self.restore_3d_btn = QPushButton("Close")
-        self.restore_3d_btn.setToolTip("Close the managed 3D scene.")
+        self.restore_3d_btn.setToolTip("Close the 3D view.")
         self.restore_3d_btn.clicked.connect(self.cleanup_managed_3d)
         scene_controls.addWidget(self.open_3d_btn)
         scene_controls.addWidget(self.refresh_scene_btn)
@@ -770,20 +840,10 @@ class PluginDockWidget(QDockWidget):
         self.live_terrain_scale.valueChanged.connect(self._on_atmosphere_changed)
         scene_form.addRow("Terrain scale:", self.live_terrain_scale)
 
-        self.live_cb_edl = QCheckBox("Eye-Dome Lighting (EDL)")
+        self.live_cb_edl = QCheckBox("Edge shading (eye-dome lighting)")
         self.live_cb_edl.setChecked(True)
         self.live_cb_edl.toggled.connect(self._on_atmosphere_changed)
         scene_form.addRow("", self.live_cb_edl)
-
-        self.live_cb_shadows_3d = QCheckBox("3D sun shadows")
-        self.live_cb_shadows_3d.setChecked(True)
-        self.live_cb_shadows_3d.toggled.connect(self._on_atmosphere_changed)
-        scene_form.addRow("", self.live_cb_shadows_3d)
-
-        self.live_cb_ao = QCheckBox("Ambient occlusion (SSAO)")
-        self.live_cb_ao.setChecked(True)
-        self.live_cb_ao.toggled.connect(self._on_atmosphere_changed)
-        scene_form.addRow("", self.live_cb_ao)
 
         sun_row = QHBoxLayout()
         sun_row.setContentsMargins(0, 0, 0, 0)
@@ -807,7 +867,7 @@ class PluginDockWidget(QDockWidget):
         scene_form.addRow("Sun angle:", sun_row)
 
         self.export_png_btn = QPushButton("Save 2D Map PNG…")
-        self.export_png_btn.setToolTip("Export a high-resolution PNG snapshot of the current styled map canvas.")
+        self.export_png_btn.setToolTip("Save a high-resolution PNG picture of the map as it looks now.")
         self.export_png_btn.clicked.connect(self._export_map_png)
         scene_form.addRow("Export:", self.export_png_btn)
 
@@ -955,13 +1015,22 @@ class PluginDockWidget(QDockWidget):
             self.set_status("Cache already empty.")
 
     def set_running(self, running: bool):
-        """Toggle the Run and Cancel buttons while an OSM download is in progress."""
-        if not running:
+        """Run is off and Cancel is shown while a download runs: one run at a time."""
+        self._running = bool(running)
+        if running:
             self._cancel_requested = False
+        else:
+            self._cancel_requested = False
+            if self._status_kind == "info" and self._wait_started is not None:
+                # a run that ended without a final sentence must not keep counting
+                self.set_status(self._status_text, kind="info")
         with contextlib.suppress(Exception):
-            self.run_btn.setEnabled(not running)
             self.cancel_btn.setVisible(bool(running))
             self.cancel_btn.setEnabled(bool(running))
+        self._refresh_run_enabled()
+
+    def is_running(self) -> bool:
+        return self._running
 
     def is_cancelled(self) -> bool:
         return bool(self._cancel_requested)
@@ -970,11 +1039,34 @@ class PluginDockWidget(QDockWidget):
         self._cancel_requested = True
         with contextlib.suppress(Exception):
             self.cancel_btn.setEnabled(False)
-        self.set_status("Cancelling download…", error=True)
+        self.set_status("Cancelling the download…", busy=True)
+        self.cancelRequested.emit()
 
-    def _update_canvas_area_readout(self):
+    def _refresh_run_enabled(self):
+        with contextlib.suppress(Exception):
+            self.run_btn.setEnabled(not self._running and self._area_ready)
+            self.run_btn.setToolTip("" if self._area_ready else EMPTY_MAP_HINT)
+
+    def _set_area_ready(self, ready: bool):
+        """Run needs an area: with an empty map it is off and the dock says why."""
+        ready = bool(ready)
+        was_ready, self._area_ready = self._area_ready, ready
+        self._refresh_run_enabled()
+        if not ready and not self._running and self._status_text in ("", "Ready."):
+            self.set_status(EMPTY_MAP_HINT, kind="info")
+        elif ready and not was_ready and self._status_text == EMPTY_MAP_HINT:
+            self.set_status("Ready.")
+
+    def _update_canvas_area_readout(self, *_args):
         if not hasattr(self, "canvas_area_label"):
             return
+        uses_view = self.area_source.currentData() == "canvas" and self.shape.currentData() != SHAPE_POLYGON
+        try:
+            rect = self.iface.mapCanvas().extent()
+            empty = rect.isNull() or rect.isEmpty()
+        except Exception:
+            empty = True
+        self._set_area_ready(not (uses_view and empty))
         with contextlib.suppress(Exception):
             from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform
             from .osm_download import bbox_area_km2
@@ -982,7 +1074,7 @@ class PluginDockWidget(QDockWidget):
             canvas = self.iface.mapCanvas()
             rect = canvas.extent()
             if rect.isEmpty():
-                self.canvas_area_label.setText("Canvas extent: —")
+                self.canvas_area_label.setText(EMPTY_MAP_HINT if uses_view else "Map view: —")
                 return
             src_crs = canvas.mapSettings().destinationCrs()
             wgs_crs = QgsCoordinateReferenceSystem.fromEpsgId(4326)
@@ -997,15 +1089,18 @@ class PluginDockWidget(QDockWidget):
                     "color:#9a5b13;font-size:10px;font-weight:600;background:transparent;"
                 )
                 self.canvas_area_label.setText(
-                    f"Canvas: ≈ {area_km2:,.2f} km² (exceeds Max area; center {max_val:g} km² will be clipped)"
+                    f"Map view: ≈ {area_km2:,.2f} km², larger than Max area; "
+                    f"the central {max_val:g} km² will be used."
                 )
             else:
                 self.canvas_area_label.setStyleSheet(
                     "color:#2f756f;font-size:10px;font-weight:600;background:transparent;"
                 )
-                self.canvas_area_label.setText(f"Canvas extent: ≈ {area_km2:,.2f} km²")
+                self.canvas_area_label.setText(f"Map view: ≈ {area_km2:,.2f} km²")
 
     def _emit_run(self):
+        if self._running or not self.run_btn.isEnabled():
+            return
         self._cancel_requested = False
         p = {
             "area_source": self.area_source.currentData(),
@@ -1021,7 +1116,6 @@ class PluginDockWidget(QDockWidget):
             "shadow_2d": self.cb_shadow_2d.isChecked(),
             "mode_25d": self.cb_mode_25d.isChecked(),
             "edl_enabled": self.cb_edl.isChecked(),
-            "shadows_3d": self.cb_shadows_3d.isChecked(),
             "want_base": self.cb_base.isChecked(),
             "want_roads": self.cb_roads.isChecked(),
             "want_water": self.cb_water.isChecked(),
@@ -1038,7 +1132,6 @@ class PluginDockWidget(QDockWidget):
             "use_cache": self.cb_use_cache.isChecked(),
         }
         self._save(p)
-        self.set_status("Running...")
         self.runRequested.emit(p)
 
     def _restore(self):
@@ -1093,8 +1186,6 @@ class PluginDockWidget(QDockWidget):
         self.live_cb_mode_25d.setChecked(_truthy(s.value(f"{_S}/mode_25d"), False))
         self.cb_edl.setChecked(_truthy(s.value(f"{_S}/edl_enabled"), True))
         self.live_cb_edl.setChecked(_truthy(s.value(f"{_S}/edl_enabled"), True))
-        self.cb_shadows_3d.setChecked(_truthy(s.value(f"{_S}/shadows_3d"), True))
-        self.live_cb_shadows_3d.setChecked(_truthy(s.value(f"{_S}/shadows_3d"), True))
         with contextlib.suppress(TypeError, ValueError):
             self.height_scale.setValue(float(s.value(f"{_S}/height_scale", 1.0)))
             self.live_height_scale.setValue(float(s.value(f"{_S}/height_scale", 1.0)))
@@ -1133,7 +1224,6 @@ class PluginDockWidget(QDockWidget):
         s.setValue(f"{_S}/shadow_2d", p.get("shadow_2d", True))
         s.setValue(f"{_S}/mode_25d", p.get("mode_25d", False))
         s.setValue(f"{_S}/edl_enabled", p.get("edl_enabled", True))
-        s.setValue(f"{_S}/shadows_3d", p.get("shadows_3d", True))
         s.setValue(f"{_S}/terrain_vertical_scale", p.get("terrain_vertical_scale", 1.0))
         s.setValue(f"{_S}/save_gpkg", p["save_gpkg"])
         s.setValue(f"{_S}/use_cache", p["use_cache"])
@@ -1159,7 +1249,6 @@ class PluginDockWidget(QDockWidget):
             self.live_terrain_dem,
             self.live_terrain_scale,
             self.live_cb_edl,
-            self.live_cb_shadows_3d,
         )
         for widget in widgets:
             widget.blockSignals(True)
@@ -1179,7 +1268,6 @@ class PluginDockWidget(QDockWidget):
                 self.live_cb_base.setChecked(bool(p.get("want_base", True)))
                 self._set_combo_data(self.live_map_resolution, p.get("map_resolution", 1024))
                 self.live_cb_edl.setChecked(bool(p.get("edl_enabled", True)))
-                self.live_cb_shadows_3d.setChecked(bool(p.get("shadows_3d", True)))
                 self.live_terrain_scale.setValue(float(p.get("terrain_vertical_scale", 1.0)))
                 with contextlib.suppress(Exception):
                     self.live_terrain_dem.setCurrentLayer(p.get("terrain_layer"))
@@ -1263,7 +1351,7 @@ class PluginDockWidget(QDockWidget):
         if not layers:
             empty = QLabel("Download OSM data first; visible 3D layers will appear here.")
             empty.setWordWrap(True)
-            empty.setStyleSheet("color:#6c7b7d;font-size:11px;")
+            empty.setStyleSheet("color:#4f5f61;font-size:11px;")
             self.layer_3d_grid.addWidget(empty, 0, 0, 1, 2)
             return
         for index, layer in enumerate(layers):
@@ -1301,14 +1389,63 @@ class PluginDockWidget(QDockWidget):
         self.focus_3d_btn.setEnabled(canvas is not None)
         self.restore_3d_btn.setEnabled(canvas is not None)
 
-    def set_status(self, text, *, error=False):
-        color = "#a32525" if error else "#245d39"
-        border = "#efc4c4" if error else "#c9dfd0"
-        self.status.setStyleSheet(
+    def set_status(self, text, *, error=False, busy=False, kind=None):
+        """Show one short sentence in the status line below the tabs.
+
+        ``kind`` is "ok", "info", "warn" or "error". While ``busy`` the seconds
+        since the wait began follow the sentence and count up every second
+        ("Asking overpass-api.de… 12 s").
+        """
+        if kind is None:
+            kind = "error" if error else ("info" if busy else "ok")
+        self._status_text = " ".join(str(text or "").split())
+        self._status_kind = kind if kind in _STATUS_COLOURS else "ok"
+        if busy:
+            if self._wait_started is None:
+                self._wait_started = time.monotonic()
+            if not self._elapsed_timer.isActive():
+                self._elapsed_timer.start()
+        else:
+            self._wait_started = None
+            self._elapsed_timer.stop()
+        self._render_status()
+
+    def elapsed_seconds(self) -> int:
+        if self._wait_started is None:
+            return 0
+        return int(time.monotonic() - self._wait_started)
+
+    def _render_status(self):
+        text = self._status_text
+        if self._wait_started is not None and text:
+            seconds = self.elapsed_seconds()
+            text = f"{text} {seconds} s" if text.endswith(("…", "...")) else f"{text} ({seconds} s)"
+        color, border = _STATUS_COLOURS[self._status_kind]
+        sheet = (
             f"color:{color};background:#ffffff;border:1px solid {border};"
             "border-radius:7px;padding:5px 8px;font-size:11px;"
         )
+        if self.status.styleSheet() != sheet:
+            self.status.setStyleSheet(sheet)
         self.status.setText(text)
+
+    def status_kind(self) -> str:
+        return self._status_kind
+
+    @pyqtSlot(str)
+    def show_progress(self, text):
+        """A status sentence from the download task, delivered on the UI thread."""
+        if self._running and not self._cancel_requested and text:
+            self.set_status(text, busy=True)
+
+    def set_summary(self, text):
+        """The result of the last run: kept until the next run starts."""
+        text = str(text or "").strip()
+        self.summary.setText(text)
+        self.summary.setVisible(bool(text))
+
+    def summary_text(self) -> str:
+        return self.summary.text() if self.summary.isVisible() else ""
 
     def refresh_groups(self):
         current_name = self.group_combo.currentText()
@@ -1759,9 +1896,9 @@ class PluginDockWidget(QDockWidget):
 
     def _on_open_3d_clicked(self):
         if self.open_managed_3d_view(auto=False):
-            self.set_status("Managed QGIS 3D scene ready.")
+            self.set_status("3D view ready.")
         else:
-            self.set_status("Could not create the managed 3D scene.", error=True)
+            self.set_status("The 3D view could not be opened in this QGIS.", error=True)
         self._update_scene_panel()
 
     def _on_refresh_3d_clicked(self):
@@ -1769,9 +1906,9 @@ class PluginDockWidget(QDockWidget):
         if not ok:
             ok = self.open_managed_3d_view(auto=False)
         if ok:
-            self.set_status("Managed 3D scene refreshed.")
+            self.set_status("3D view updated.")
         else:
-            self.set_status("No managed 3D scene to refresh yet.", error=True)
+            self.set_status("There is no 3D view to update yet.", error=True)
         self._update_scene_panel()
 
     def _find_external_3d_dock(self):
@@ -1793,10 +1930,8 @@ class PluginDockWidget(QDockWidget):
             "terrain_layer": self.live_terrain_dem.currentLayer() if hasattr(self, "live_terrain_dem") else None,
             "terrain_vertical_scale": self.live_terrain_scale.value() if hasattr(self, "live_terrain_scale") else 1.0,
             "edl_enabled": self.live_cb_edl.isChecked() if hasattr(self, "live_cb_edl") else True,
-            "shadows_enabled": self.live_cb_shadows_3d.isChecked() if hasattr(self, "live_cb_shadows_3d") else True,
             "sun_azimuth": self.live_sun_azimuth.value() if hasattr(self, "live_sun_azimuth") else 315.0,
             "sun_altitude": self.live_sun_altitude.value() if hasattr(self, "live_sun_altitude") else 45.0,
-            "ambient_occlusion": self.live_cb_ao.isChecked() if hasattr(self, "live_cb_ao") else True,
         }
 
     def _refresh_3d_view(self, auto=False):
@@ -1823,14 +1958,16 @@ class PluginDockWidget(QDockWidget):
             return self._managed_canvas
         return native3d.find_owned_3d_map_canvas(self.iface, self._managed_canvas_name)
 
-    def open_managed_3d_view(self, auto=False):
+    def open_managed_3d_view(self, auto=False, quiet=False):
+        """Open (or refresh) the plugin's 3D view. ``quiet`` leaves the status line alone,
+        so the result of a run stays readable."""
         if not self.isVisible() and auto:
             return False
         group_layers = self._group_layers()
         layers = self._current_3d_layers()
         if not group_layers:
-            if not auto:
-                self.set_status("Download OSM data first; the 3D scene is created after a result group exists.", error=True)
+            if not auto and not quiet:
+                self.set_status("Download OSM data first; the 3D view needs a result.", error=True)
             return False
         if self._managed_canvas is not None:
             self._refresh_3d_view(auto=auto)
@@ -1852,8 +1989,8 @@ class PluginDockWidget(QDockWidget):
                 **self._atmosphere_kwargs(),
             )
         if canvas is None:
-            if not auto:
-                self.set_status("No managed 3D scene could be created.", error=True)
+            if not auto and not quiet:
+                self.set_status("The 3D view could not be opened in this QGIS.", error=True)
             self._update_scene_panel()
             return False
 
@@ -1871,7 +2008,8 @@ class PluginDockWidget(QDockWidget):
         self.tab_widget.setCurrentWidget(self.live_tab)
         if not auto:
             self._raise_3d_view()
-            self.set_status("Managed QGIS 3D scene ready; use this dock to control it.")
+        if not auto and not quiet:
+            self.set_status("3D view ready; use the Theme & Style tab to adjust it.")
         self._update_scene_panel()
         return True
 
