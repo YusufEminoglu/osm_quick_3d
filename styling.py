@@ -639,24 +639,37 @@ def apply_building_2d_effect(layer, shadow_2d: bool = False, mode_25d: bool = Fa
             layer.triggerRepaint()
             return True
 
+        # Offset and blur are ground metres, not millimetres: the 3D view bakes this
+        # layer into 1024 px terrain tiles, and a millimetre shadow is a fixed pixel
+        # count per tile, so on the coarse tiles shown when zoomed out it grew to
+        # tens of metres and darkened every street.
+        def _ground_units(effect):
+            with contextlib.suppress(Exception):
+                from qgis.core import Qgis
+                unit = Qgis.RenderUnit.MetersInMapUnits
+                effect.setOffsetUnit(unit)
+                effect.setBlurUnit(unit)
+
         stack = QgsEffectStack()
         stack.setEnabled(True)
         if mode_25d:
             # Crisp isometric plinth shadow + subtle ambient shadow
             plinth = QgsDropShadowEffect()
             plinth.setEnabled(True)
+            _ground_units(plinth)
             plinth.setOffsetAngle(135)
-            plinth.setOffsetDistance(1.8)
-            plinth.setBlurLevel(0.4)
+            plinth.setOffsetDistance(4.0)
+            plinth.setBlurLevel(1.0)
             plinth.setOpacity(0.55)
             plinth.setColor(QColor("#2c3138"))
             stack.appendEffect(plinth)
         if shadow_2d or mode_25d:
             shadow = QgsDropShadowEffect()
             shadow.setEnabled(True)
+            _ground_units(shadow)
             shadow.setOffsetAngle(135)
-            shadow.setOffsetDistance(2.4 if mode_25d else 1.5)
-            shadow.setBlurLevel(2.6 if mode_25d else 2.0)
+            shadow.setOffsetDistance(6.0 if mode_25d else 4.0)
+            shadow.setBlurLevel(5.0 if mode_25d else 3.0)
             shadow.setOpacity(0.36 if mode_25d else 0.40)
             shadow.setColor(QColor("#1a1e24"))
             stack.appendEffect(shadow)

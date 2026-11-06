@@ -968,6 +968,127 @@ def check_no_dead_3d_toggles(rig):
     return f"no dead switches (shadow API {shadows_api}, ambient-occlusion API {ao_api})"
 
 
+def check_3d_view_opens_docked_on_top(rig):
+    """P14: the first 3D view opens docked in the top area, not as a floating window.
+
+    0.52.0 left the dock state to QGIS, which opens a 3D view with no stored
+    state as a floating window (``widget-geometry/docks/items/<name>/is-docked``).
+    """
+    from qgis.core import QgsSettings
+    from qgis.PyQt.QtCore import Qt
+    from qgis.PyQt.QtWidgets import QDockWidget, QWidget
+
+    from osm_quick_3d import native3d
+
+    name = native3d.MANAGED_3D_CANVAS_NAME
+    base = f"app/widget-geometry/docks/items/{name}"
+    settings = QgsSettings()
+    settings.remove(native3d._TOP_DOCK_SEEDED_KEY)
+    settings.setValue(f"{base}/is-docked", False)        # what a 0.52.0 first run left behind
+    seen_at_create = []
+    created = []
+
+    def create(view_name):
+        s = QgsSettings()
+        seen_at_create.append((str(s.value(f"{base}/is-docked")).lower(), s.value(f"{base}/dock-area")))
+        dock = QDockWidget(view_name, rig.window)
+        canvas = QWidget(dock)
+        dock.setWidget(canvas)
+        rig.window.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+        dock.setFloating(True)
+        created.append(dock)
+        return canvas
+
+    top = Qt.DockWidgetArea.TopDockWidgetArea
+    original = rig.iface.createNewMapCanvas3D
+    rig.iface.createNewMapCanvas3D = create
+    try:
+        native3d.create_managed_3d_map_canvas(rig.iface, name=name, layers=[])
+        first = created[-1]
+        first_state = (first.isFloating(), rig.window.dockWidgetArea(first))
+        native3d.create_managed_3d_map_canvas(rig.iface, name=name, layers=[])
+        second = created[-1]
+        second_floating = second.isFloating()
+    finally:
+        rig.iface.createNewMapCanvas3D = original
+        for dock in created:
+            rig.window.removeDockWidget(dock)
+            dock.deleteLater()
+        pump(0.1)
+    problems = []
+    if not seen_at_create or seen_at_create[0] != ("true", "TopDockWidgetArea"):
+        problems.append(f"QGIS read {seen_at_create[:1]} when creating the view, not docked/top")
+    if first_state != (False, top):
+        problems.append(f"the first view ended floating={first_state[0]}, area={first_state[1]}")
+    if not second_floating:
+        problems.append("the default was forced again on a later view; the user's own choice must stick")
+    fail_if(problems)
+    return "seeded docked/top before creation, docked on top, later choice left alone"
+
+
+def check_building_shadow_same_on_every_3d_tile(rig):
+    """P15: the 2D building shadow covers the same ground on coarse and fine 3D tiles.
+
+    The 3D view drapes the 2D map over its terrain as 1024 px tiles. In 0.52.0
+    the shadow was sized in millimetres, a fixed pixel count per tile, so the
+    3 km tile shown when zoomed out shaded 99% of the street centres and the
+    200 m tile 0%: the scene went dark whenever the user zoomed out.
+    """
+    from qgis.core import QgsFeature, QgsGeometry, QgsMapRendererCustomPainterJob, QgsMapSettings, QgsVectorLayer
+    from qgis.PyQt.QtCore import QSize
+    from qgis.PyQt.QtGui import QColor, QImage, QPainter
+
+    from osm_quick_3d import styling
+
+    layer = QgsVectorLayer("Polygon?crs=EPSG:3857&field=osm_id:string&field=building:string", "b", "memory")
+    feats = []
+    for i in range(60):
+        for j in range(60):
+            feat = QgsFeature(layer.fields())
+            feat.setGeometry(QgsGeometry.fromRect(QgsRectangle(i * 50, j * 50, i * 50 + 30, j * 50 + 30)))
+            feat["osm_id"] = str(i * 60 + j)
+            feats.append(feat)
+    layer.dataProvider().addFeatures(feats)
+    styling.style_buildings(layer, shadow_2d=True)
+
+    def shaded_share(extent, street_x):
+        ms = QgsMapSettings()
+        ms.setLayers([layer])
+        ms.setDestinationCrs(layer.crs())
+        ms.setExtent(extent)
+        ms.setOutputSize(QSize(1024, 1024))
+        image = QImage(QSize(1024, 1024), QImage.Format.Format_ARGB32)
+        image.fill(QColor(255, 255, 255))
+        painter = QPainter(image)
+        job = QgsMapRendererCustomPainterJob(ms, painter)
+        job.start()
+        job.waitForFinished()
+        painter.end()
+        dark = total = 0
+        x0 = int(extent.xMinimum()) // 50 * 50
+        for gx in range(x0 + street_x, int(extent.xMaximum()), 50):
+            for gy in range(int(extent.yMinimum()) // 50 * 50 + 5, int(extent.yMaximum()), 7):
+                px = int((gx - extent.xMinimum()) / extent.width() * 1024)
+                py = int((extent.yMaximum() - gy) / extent.height() * 1024)
+                if 0 <= px < 1024 and 0 <= py < 1024:
+                    total += 1
+                    dark += image.pixelColor(px, py).lightness() < 235
+        return dark / max(total, 1)
+
+    coarse = QgsRectangle(0, 0, 3000, 3000)
+    fine = QgsRectangle(1000, 1000, 1200, 1200)
+    centre = (shaded_share(coarse, 40), shaded_share(fine, 40))      # 10 m from the walls
+    edge = (shaded_share(coarse, 32), shaded_share(fine, 32))        # 2 m from the walls
+    problems = []
+    if abs(centre[0] - centre[1]) > 0.2:
+        problems.append(f"street centres shaded {centre[0]:.0%} zoomed out vs {centre[1]:.0%} zoomed in")
+    if min(edge) < 0.3:
+        problems.append(f"no shadow beside the walls ({edge[0]:.0%} / {edge[1]:.0%})")
+    fail_if(problems)
+    return (f"street centre {centre[0]:.0%}/{centre[1]:.0%}, beside walls {edge[0]:.0%}/{edge[1]:.0%} "
+            "(zoomed out / zoomed in)")
+
+
 def _visible_texts(widget):
     from qgis.PyQt.QtWidgets import QAbstractButton, QComboBox, QGroupBox, QLabel
 
@@ -1062,6 +1183,8 @@ CHECKS = (
     check_failure_in_dock_not_a_box,
     check_partial_result_says_so,
     check_no_dead_3d_toggles,
+    check_3d_view_opens_docked_on_top,
+    check_building_shadow_same_on_every_3d_tile,
     check_plain_words,
     check_unload_removes_dock_and_disconnects,
 )

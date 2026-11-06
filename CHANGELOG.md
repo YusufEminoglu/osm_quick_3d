@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.52.1] - 2026-11-06
+
+The 3D view opens docked on top, and zooming out no longer darkens it.
+
+- **3D view docked on top.** QGIS remembers each 3D view's dock state by its
+  name and opens a view with nothing stored as a floating window, so the first
+  run gave a separate window. The plugin now sets the default to docked in the
+  top area, once per QGIS profile, before the view is created; if you later
+  float or move it, that choice is kept.
+- **No more dark streets when zooming out.** The 2D building drop-shadow was
+  sized in millimetres. The 3D view drapes the 2D map over its ground as
+  1024 px tiles, so a millimetre shadow is a fixed number of pixels per tile:
+  on the coarse tile shown when zoomed out it grew to tens of metres and
+  shaded 99% of the street centres, on a close tile 0%. The shadow is now
+  sized in ground metres and covers the same ground at every zoom.
+
 ## [0.52.0] - 2026-11-04
 
 QGIS no longer freezes while OpenStreetMap downloads, Cancel works, the

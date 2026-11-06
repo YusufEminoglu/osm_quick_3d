@@ -944,6 +944,65 @@ def set_3d_map_tile_resolution(iface, resolution=1024, bg_color_hex=None,
     return ok
 
 
+_DOCK_SETTINGS_PREFIX = "app/widget-geometry/docks/items"
+_TOP_DOCK_SEEDED_KEY = "osm_quick_3d/view3d_top_dock_seeded"
+
+
+def seed_top_dock_default(name=MANAGED_3D_CANVAS_NAME):
+    """Make the 3D view open docked in the top area, once per QGIS profile.
+
+    QGIS stores each 3D view's dock state under its name and, with nothing stored,
+    opens a new view as a floating window. Seeding before the view is created sets
+    the default; later choices by the user persist because this runs only once.
+    Returns True when the default was written now.
+    """
+    try:
+        from qgis.core import QgsSettings
+        settings = QgsSettings()
+        if str(settings.value(_TOP_DOCK_SEEDED_KEY, "")).lower() in ("1", "true"):
+            return False
+        base = f"{_DOCK_SETTINGS_PREFIX}/{name}"
+        settings.setValue(f"{base}/is-docked", True)
+        settings.setValue(f"{base}/dock-area", "TopDockWidgetArea")
+        settings.setValue(_TOP_DOCK_SEEDED_KEY, True)
+        return True
+    except Exception:
+        return False
+
+
+def _host_dock_widget(canvas):
+    """The QDockWidget holding ``canvas``, or None when it opened as a window."""
+    with contextlib.suppress(Exception):
+        from qgis.PyQt.QtWidgets import QDockWidget
+        widget = canvas if hasattr(canvas, "parentWidget") else None
+        while widget is not None:
+            if isinstance(widget, QDockWidget):
+                return widget
+            widget = widget.parentWidget()
+    return None
+
+
+def dock_3d_view_top(iface, canvas):
+    """Move the dock holding ``canvas`` into the main window's top dock area."""
+    dock = _host_dock_widget(canvas)
+    if dock is None:
+        return False
+    try:
+        from qgis.PyQt.QtCore import Qt
+        try:
+            top = Qt.DockWidgetArea.TopDockWidgetArea
+        except AttributeError:
+            top = getattr(Qt, "TopDockWidgetArea")
+        window = iface.mainWindow()
+        if dock.isFloating() or window.dockWidgetArea(dock) != top:
+            dock.setFloating(False)
+            window.addDockWidget(top, dock)
+        dock.show()
+        return True
+    except Exception:
+        return False
+
+
 def create_managed_3d_map_canvas(iface, resolution=1024, bg_color_hex=None,
                                  name=MANAGED_3D_CANVAS_NAME, layers=None,
                                  clip_geometry=None, terrain_layer=None,
@@ -956,10 +1015,12 @@ def create_managed_3d_map_canvas(iface, resolution=1024, bg_color_hex=None,
     into the dock because that is unstable on Windows/Qt.
     """
     canvas = find_owned_3d_map_canvas(iface, name)
+    seeded = False
     if canvas is None:
         create_fn = getattr(iface, "createNewMapCanvas3D", None)
         if create_fn is None:
             return None
+        seeded = seed_top_dock_default(name)
         try:
             canvas = create_fn(name)
         except TypeError:
@@ -972,6 +1033,8 @@ def create_managed_3d_map_canvas(iface, resolution=1024, bg_color_hex=None,
     if canvas is None:
         return None
     _mark_canvas_owned(canvas, name)
+    if seeded:
+        dock_3d_view_top(iface, canvas)
     configure_3d_map_canvas(
         iface, canvas, resolution, bg_color_hex, layers=layers,
         clip_geometry=clip_geometry, terrain_layer=terrain_layer,
